@@ -3,42 +3,61 @@
   "name": "DK 氣墊鞋 EVA防水Q彈厚底夾腳拖鞋 A0235-46 奶茶色",
   "product_url": "https://www.dk-shoes.com.tw/SalePage/Index/11802051",
   "image": "https://img.91app.com/webapi/imagesV3/Original/SalePage/11802051/0/639241029691830000?v=1",
-  "verified": false,
-  "source_note": "尺碼 23~28 號。銷售頁沒有腳長對照表，暫定「N 號適合腳長 N-0.5 ~ N+0.5 cm」，上線前請商品部確認後把 verified 改成 true。",
+  "verified": true,
+  "source_note": "廠商尺寸 5~10 號對應 DK 標示 23~28 號。鞋長、鞋寬、適合腳長取自廠商尺碼表（2026-09-15 確認）。",
   "unit": "mm",
+  "fit_note": "鞋長比適合腳長多約 1~2 cm，屬正常餘量",
   "width_rule": {
-    "enabled": false,
+    "enabled": true,
     "margin_mm": 0,
-    "note": "目前沒有鞋寬資料，暫不用腳寬判斷；補上各尺碼 shoe_width 後再啟用"
+    "note": "腳寬 ≥ 該號鞋寬 + margin_mm 時建議大一號（廠商試穿紀錄：腳寬偏寬的人會選大一號）"
   },
   "sizes": [
     {
       "label": "23號",
+      "maker_label": "5號",
+      "shoe_length": 245,
+      "shoe_width": 98,
       "foot_min": 225,
       "foot_max": 235
     },
     {
       "label": "24號",
+      "maker_label": "6號",
+      "shoe_length": 255,
+      "shoe_width": 98,
       "foot_min": 235,
       "foot_max": 245
     },
     {
       "label": "25號",
+      "maker_label": "7號",
+      "shoe_length": 265,
+      "shoe_width": 103,
       "foot_min": 245,
       "foot_max": 255
     },
     {
       "label": "26號",
+      "maker_label": "8號",
+      "shoe_length": 275,
+      "shoe_width": 103,
       "foot_min": 255,
       "foot_max": 265
     },
     {
       "label": "27號",
+      "maker_label": "9號",
+      "shoe_length": 285,
+      "shoe_width": 108,
       "foot_min": 265,
       "foot_max": 275
     },
     {
       "label": "28號",
+      "maker_label": "10號",
+      "shoe_length": 295,
+      "shoe_width": 110,
       "foot_min": 275,
       "foot_max": 285
     }

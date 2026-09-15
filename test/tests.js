@@ -83,13 +83,17 @@ export async function runAll(report) {
     add('尺碼', '商品清單 index.json', allValid, `${skus.join(', ')}，每個都有尺碼表與商品連結=${allValid}`);
   }
 
-  // ---- DK A0235 夾腳拖（區間暫定，未確認）----
+  // ---- DK A0235 夾腳拖（廠商 5~10 號 = DK 23~28 號）----
   for (const [sku, cases] of [
-    ['11802053', [[240, 95, '建議 24號'], [244, 95, '建議 24號 或 25號'], [280, 100, '建議 28號'], [292, 100, '這款沒有適合你的尺碼'], [219, 90, '這款沒有適合你的尺碼']]],
-    ['11802051', [[250, 95, '建議 25號'], [236, 90, '建議 23號 或 24號'], [272, 105, '建議 27號 或 28號']]],
+    ['11802053', [[240, 95, '建議 24號'], [244, 95, '建議 24號 或 25號'], [280, 100, '建議 28號'], [292, 100, '這款沒有適合你的尺碼'], [219, 90, '這款沒有適合你的尺碼'],
+      // 三位同事實拍、尺量確認過的腳長腳寬
+      [277, 105, '建議 27號 或 28號'], [263, 106, '建議 27號'], [223, 89, '建議 23號']]],
+    ['11802051', [[250, 95, '建議 25號'], [236, 90, '建議 23號 或 24號'], [272, 105, '建議 27號 或 28號'], [258, 104, '建議 27號']]],
   ]) {
     const dk = await fetch(`../data/sizes/${sku}.json`).then((r) => r.json());
-    add('尺碼', `DK ${sku} 尺碼表格式`, validateChart(dk) && dk.verified === false, `${dk.name}，${dk.sizes.map((s) => s.label).join('/')}，verified=${dk.verified}`);
+    const dimsOk = dk.sizes.every((s) => Number.isFinite(s.shoe_length) && Number.isFinite(s.shoe_width));
+    add('尺碼', `DK ${sku} 尺碼表格式`, validateChart(dk) && dk.verified === true && dimsOk && dk.width_rule.enabled,
+      `${dk.name}，${dk.sizes.map((s) => `${s.label}=廠商${s.maker_label}`).join('、')}，verified=${dk.verified}`);
     for (const [L, W, expect] of cases) {
       const rec = recommend(dk, L, W);
       add('尺碼', `DK ${sku} 腳長 ${L / 10}`, rec.headline === expect, `${rec.headline}｜預期 ${expect}`);
