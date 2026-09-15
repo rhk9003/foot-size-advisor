@@ -21,6 +21,19 @@ export async function loadChart(sku) {
   }
 }
 
+// 沒有指定商品時用：載入 data/sizes/index.json 列出的全部商品尺碼表
+export async function loadCatalog() {
+  try {
+    const res = await fetch('data/sizes/index.json', { cache: 'no-cache' });
+    if (!res.ok) return [];
+    const { products = [] } = await res.json();
+    const charts = await Promise.all(products.map((sku) => loadChart(sku)));
+    return charts.filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
 // 回傳 { status, primary, alternative, bumped, headline, details, lengthSize }
 // status：ok / too_small / too_large
 export function recommend(chart, lengthMm, widthMm, boundaryMm = CONFIG.BOUNDARY_MM) {

@@ -11,7 +11,7 @@ https://<GitHub 帳號>.github.io/foot-size-advisor/?sku=11802053&back=https://w
 
 | 參數 | 說明 |
 |------|------|
-| `sku` | 對應 `data/sizes/<sku>.json` 的尺碼表，目前用 91APP 銷售頁編號 |
+| `sku` | 對應 `data/sizes/<sku>.json` 的尺碼表，目前用 91APP 銷售頁編號。沒帶或編號錯誤時，結果頁會列出 `data/sizes/index.json` 裡每個商品的建議尺碼與商品連結 |
 | `back` | 結果頁「回商品頁」按鈕的網址，沒帶就不顯示按鈕 |
 | `debug=1` | 顯示偵測過程的遮罩與數值，調參數用 |
 
@@ -36,7 +36,7 @@ https://<GitHub 帳號>.github.io/foot-size-advisor/?sku=11802053&back=https://w
 
 ## 新增商品
 
-在 `data/sizes/` 新增 `<sku>.json`：
+在 `data/sizes/` 新增 `<sku>.json`，並把 sku 加進 `data/sizes/index.json` 的 `products`（沒指定商品時的推薦清單）：
 
 ```json
 {

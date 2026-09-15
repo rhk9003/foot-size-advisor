@@ -5,7 +5,7 @@ import { detectPaper, rectify, aspectCheck, defaultCorners, checkQuad } from './
 import { assignPaperCorners, dist } from './geometry.js';
 import { measureFromCorners } from './pipeline.js';
 import { computeMeasurements, measurementConfidence, sanityCheck } from './measure.js';
-import { loadChart, recommend, cm } from './sizing.js';
+import { loadChart, loadCatalog, recommend, cm } from './sizing.js';
 import { PointEditor } from './ui-adjust.js';
 import { ISSUES, footIssue } from './guidance.js';
 
@@ -19,6 +19,7 @@ const CARD_COUNT = 4;
 
 const state = {
   chart: null,
+  catalog: [], // 沒有指定商品時，全部商品的尺碼表
   card: 0,
   photo: null,
   photoCanvas: null,
@@ -351,10 +352,15 @@ function showResult(lengthMm, widthMm, feet = []) {
   tbody.innerHTML = '';
   const chart = state.chart;
   $('result-product').hidden = !chart;
+  $('result-products').hidden = true;
   if (!chart) {
+    $('result-table-wrap').hidden = true;
+    if (state.catalog.length) {
+      renderCatalog(state.catalog, lengthMm, widthMm, addDetail);
+      return;
+    }
     $('result-headline').textContent = '量好了';
     addDetail(SKU ? '找不到這個商品的尺碼表，請回商品頁對照尺碼表選購。' : '沒有指定商品，請回商品頁對照尺碼表選購。');
-    $('result-table-wrap').hidden = true;
     return;
   }
   $('result-product').textContent = chart.name || '';
@@ -385,6 +391,60 @@ function showResult(lengthMm, widthMm, feet = []) {
     tbody.appendChild(tr);
   }
   $('result-table-wrap').hidden = false;
+}
+
+// 沒有指定商品：每個商品各算一次建議尺碼，列成可點的商品卡片
+function renderCatalog(catalog, lengthMm, widthMm, addDetail) {
+  const recs = catalog.map((chart) => ({ chart, rec: recommend(chart, lengthMm, widthMm) }));
+  const headlines = [...new Set(recs.map((r) => r.rec.headline))];
+  if (headlines.length === 1) {
+    $('result-headline').textContent = headlines[0];
+    recs[0].rec.details.forEach(addDetail);
+  } else {
+    $('result-headline').textContent = '各商品的建議尺碼';
+  }
+  if (catalog.some((c) => c.verified === false)) addDetail('（測試中）商品的尺碼區間還沒確認，實際請以商品頁說明為準。');
+
+  const host = $('result-products');
+  host.innerHTML = '';
+  const title = document.createElement('h2');
+  title.textContent = '推薦商品';
+  host.appendChild(title);
+  for (const { chart, rec } of recs) {
+    const card = document.createElement(chart.product_url ? 'a' : 'div');
+    card.className = 'product-card';
+    if (chart.product_url) {
+      card.href = chart.product_url;
+      card.target = '_blank';
+      card.rel = 'noopener';
+    }
+    if (chart.image) {
+      const img = document.createElement('img');
+      img.src = chart.image;
+      img.alt = '';
+      img.loading = 'lazy';
+      img.addEventListener('error', () => { img.style.visibility = 'hidden'; });
+      card.appendChild(img);
+    }
+    const info = document.createElement('span');
+    info.className = 'product-card-info';
+    const name = document.createElement('span');
+    name.className = 'product-card-name';
+    name.textContent = chart.name;
+    const size = document.createElement('strong');
+    size.className = 'product-card-size';
+    size.textContent = rec.status === 'ok' ? rec.headline : '沒有適合你的尺碼';
+    info.append(name, size);
+    card.appendChild(info);
+    if (chart.product_url) {
+      const go = document.createElement('span');
+      go.className = 'product-card-go';
+      go.textContent = '去看看 ›';
+      card.appendChild(go);
+    }
+    host.appendChild(card);
+  }
+  host.hidden = false;
 }
 
 // ---------- 手動輸入 ----------
@@ -489,11 +549,20 @@ function init() {
 
   loadChart(SKU).then((chart) => {
     state.chart = chart;
+    const el = $('product-name');
     if (chart) {
-      const el = $('product-name');
       el.textContent = `正在幫「${chart.name}」選尺碼`;
       el.hidden = false;
+      return;
     }
+    // 沒指定商品（或編號錯誤）：載入全部商品，結果頁列出各商品建議尺碼
+    loadCatalog().then((catalog) => {
+      state.catalog = catalog;
+      if (catalog.length) {
+        el.textContent = '量完會列出每雙鞋適合你的尺碼';
+        el.hidden = false;
+      }
+    });
   });
   showCard(0);
 }

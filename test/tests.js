@@ -74,6 +74,15 @@ export async function runAll(report) {
     add('尺碼', name, rec.headline === expect, `${rec.headline}｜預期 ${expect}`);
   }
 
+  // ---- 商品清單（沒指定商品時結果頁會列出全部）----
+  {
+    const idx = await fetch('../data/sizes/index.json').then((r) => r.json());
+    const skus = Array.isArray(idx.products) ? idx.products : [];
+    const charts = await Promise.all(skus.map((s) => fetch(`../data/sizes/${s}.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null)));
+    const allValid = charts.length > 0 && charts.every((c) => c && validateChart(c) && c.product_url);
+    add('尺碼', '商品清單 index.json', allValid, `${skus.join(', ')}，每個都有尺碼表與商品連結=${allValid}`);
+  }
+
   // ---- DK A0235 夾腳拖（區間暫定，未確認）----
   for (const [sku, cases] of [
     ['11802053', [[240, 95, '建議 24號'], [244, 95, '建議 24號 或 25號'], [280, 100, '建議 28號'], [292, 100, '這款沒有適合你的尺碼'], [219, 90, '這款沒有適合你的尺碼']]],
