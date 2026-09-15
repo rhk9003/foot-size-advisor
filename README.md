@@ -13,7 +13,24 @@ https://<GitHub 帳號>.github.io/foot-size-advisor/?sku=11802053&back=https://w
 |------|------|
 | `sku` | 對應 `data/sizes/<sku>.json` 的尺碼表，目前用 91APP 銷售頁編號。沒帶或編號錯誤時，結果頁會列出 `data/sizes/index.json` 裡每個商品的建議尺碼與商品連結 |
 | `back` | 結果頁「回商品頁」按鈕的網址，沒帶就不顯示按鈕 |
+| `embed=1` | 嵌入模式：給 iframe 用，不顯示標題列和「回商品頁」按鈕 |
 | `debug=1` | 顯示偵測過程的遮罩與數值，調參數用 |
+
+## 嵌入 91APP 商品頁
+
+```html
+<iframe
+  src="https://rhk9003.github.io/foot-size-advisor/?sku=11802053&embed=1"
+  title="拍照選尺碼"
+  loading="lazy"
+  style="display:block;width:100%;max-width:480px;height:85vh;min-height:560px;max-height:820px;margin:0 auto;border:0;"
+></iframe>
+```
+
+- 奶茶色把 `sku=11802053` 換成 `sku=11802051`。
+- 高度用畫面高度的 85%，每個畫面剛好一屏，按鈕固定在框框底部；結果頁比較長時在框框內捲動。
+- `test/embed.html` 是模擬商品頁的嵌入測試。
+- 91APP 編輯器如果會拿掉 iframe，或 APP 裡點「拍照測腳長」打不開相機，改用連結按鈕：開新頁面的完整版（網址不加 `embed=1`，加上 `back=商品頁網址`）。
 
 ## 目前的商品
 

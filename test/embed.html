@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>嵌入測試（模擬商品頁）</title>
+<style>
+  body { margin: 0; font: 15px/1.6 system-ui, sans-serif; color: #333; background: #f5f5f5; }
+  .page { max-width: 750px; margin: 0 auto; background: #fff; padding: 16px; }
+  .fake { height: 360px; background: #eee; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #999; margin: 12px 0; }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>模擬商品頁</h1>
+  <div class="fake">商品圖片區</div>
+  <p>下面是要貼進 91APP 商品說明的 iframe：</p>
+  <iframe
+    src="../?sku=11802053&embed=1"
+    title="拍照選尺碼"
+    loading="lazy"
+    style="display:block;width:100%;max-width:480px;height:85vh;min-height:560px;max-height:820px;margin:0 auto;border:0;"
+  ></iframe>
+  <div class="fake">商品說明圖片區</div>
+</div>
+</body>
+</html>

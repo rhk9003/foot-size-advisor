@@ -12,6 +12,8 @@ const params = new URLSearchParams(location.search);
 const DEBUG = params.get('debug') === '1';
 const SKU = params.get('sku');
 const BACK_URL = safeUrl(params.get('back'));
+// 嵌在商品頁的 iframe 裡：不顯示標題列和「回商品頁」（本來就在商品頁上），連結開在整個頁面
+const EMBED = params.get('embed') === '1';
 const CARD_COUNT = 4;
 const COLORS = { heel: '#2F80ED', toe: '#F2994A', width: '#27AE60' };
 
@@ -244,7 +246,7 @@ function showResult(lengthMm, widthMm, { preview = null, unevenLight = false, fr
 
   const chart = state.chart;
   const back = $('btn-back-product');
-  const backUrl = BACK_URL || (chart && chart.product_url) || null;
+  const backUrl = EMBED ? null : BACK_URL || (chart && chart.product_url) || null;
   back.hidden = !backUrl;
   if (backUrl) back.href = backUrl;
 
@@ -295,7 +297,7 @@ function renderCatalog(catalog, lengthMm, widthMm, addDetail) {
     card.className = 'product-card';
     if (chart.product_url) {
       card.href = chart.product_url;
-      card.target = '_blank';
+      card.target = EMBED ? '_top' : '_blank';
       card.rel = 'noopener';
     }
     if (chart.image) {
@@ -400,6 +402,7 @@ function init() {
   document.querySelectorAll('[data-go-manual]').forEach((b) => b.addEventListener('click', () => showScreen('screen-manual')));
   $('btn-manual-back').addEventListener('click', () => showCard(0));
   $('manual-form').addEventListener('submit', submitManual);
+  if (EMBED) document.documentElement.classList.add('embed');
   if (DEBUG) document.querySelectorAll('[data-debug]').forEach((d) => { d.hidden = false; d.open = true; });
 
   loadChart(SKU).then(async (chart) => {

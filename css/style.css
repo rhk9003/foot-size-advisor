@@ -48,6 +48,11 @@ h1 { font-size: 21px; line-height: 1.35; margin: 4px 0 8px; }
   min-height: calc(100dvh - var(--topbar-h) - 12px);
 }
 .screen > form { display: flex; flex-direction: column; flex: 1; }
+
+/* 嵌入模式（?embed=1）：iframe 本身就是畫面，不需要標題列 */
+.embed .topbar { display: none; }
+.embed .wrap { padding-top: 8px; }
+.embed .screen { min-height: calc(100vh - 8px); min-height: calc(100dvh - 8px); }
 .card { display: flex; flex-direction: column; flex: 1; }
 
 .actions {
