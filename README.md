@@ -30,7 +30,7 @@ https://<GitHub 帳號>.github.io/foot-size-advisor/?sku=11802053&back=https://w
 - 奶茶色把 `sku=11802053` 換成 `sku=11802051`。
 - 高度用畫面高度的 85%，每個畫面剛好一屏，按鈕固定在框框底部；結果頁比較長時在框框內捲動。
 - `test/embed.html` 是模擬商品頁的嵌入測試。
-- 91APP 編輯器如果會拿掉 iframe，或 APP 裡點「拍照測腳長」打不開相機，改用連結按鈕：開新頁面的完整版（網址不加 `embed=1`，加上 `back=商品頁網址`）。
+- 91APP 編輯器如果會拿掉 iframe，或 APP 裡點「拍照測腳長」打不開相機，改用圖片超連結：上傳 `size-chart/拍照選尺碼按鈕.png`，超連結設成完整版工具（網址不加 `embed=1`，加上 `back=商品頁網址`）。按鈕圖用 `python tools/make_cta_banner.py` 產生。
 
 ## 目前的商品
 
