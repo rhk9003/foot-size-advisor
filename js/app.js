@@ -1,4 +1,4 @@
-// 流程：尺碼表（選拍照量或直接輸入）→ 拍照引導 → 拍照 → 自動量測（有問題就引導重拍）→ 結果
+// 流程：尺碼表（輸入資料或拍照測腳長）→ 拍照引導 → 拍照 → 自動量測（有問題就引導重拍）→ 結果
 // 不提供人工拖點修正：量測結果在結果頁用縮圖呈現，看起來不對就重拍
 import { CONFIG } from './config.js';
 import { loadImageFile, imageToCanvas, maskToCanvas, grayToCanvas } from './image.js';
@@ -129,7 +129,7 @@ async function handleFile(file) {
     photo = (await loadImageFile(file)).image;
   } catch (e) {
     console.error(e);
-    showError('照片讀不出來', '這張照片的格式可能不支援。請重拍一張，或改用輸入腳長。');
+    showError('照片讀不出來', '這張照片的格式可能不支援。請重拍一張，或改用輸入資料。');
     return;
   }
   showProcessing('正在量腳…');
@@ -152,7 +152,7 @@ async function handleFile(file) {
     r = measureFromCorners(photo, det.corners, DEBUG);
   } catch (e) {
     console.error(e);
-    showError('量測失敗', '處理照片時發生錯誤。請重拍一張，或改用輸入腳長。');
+    showError('量測失敗', '處理照片時發生錯誤。請重拍一張，或改用輸入資料。');
     return;
   }
   const issue = footIssue(r.flags) || (sanityCheck(r.measurement).ok ? null : 'bad_measure');

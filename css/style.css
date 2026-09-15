@@ -63,6 +63,7 @@ h1 { font-size: 21px; line-height: 1.35; margin: 4px 0 8px; }
   padding: 18px 16px calc(12px + env(safe-area-inset-bottom));
   background: linear-gradient(to bottom, rgba(255, 255, 255, 0), #fff 16px);
 }
+.actions.choice { grid-template-columns: 1fr 1fr; }
 .link-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 16px; }
 
 .btn {
@@ -113,7 +114,6 @@ h1 { font-size: 21px; line-height: 1.35; margin: 4px 0 8px; }
 .product-head-kicker { margin: 0; font-size: 13px; font-weight: 700; color: var(--brand-dark); }
 .product-head-name { margin: 0; font-size: 17px; line-height: 1.4; }
 .chart-note { margin: 8px 0 0; font-size: 14px; color: var(--muted); }
-.card-question { margin: 16px 0 0; font-size: 18px; font-weight: 700; text-align: center; }
 
 /* 拍照引導卡片 */
 .card-step { margin: 0 0 6px; font-size: 14px; font-weight: 700; color: var(--brand-dark); }
