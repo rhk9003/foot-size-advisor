@@ -55,15 +55,12 @@ export function recommend(chart, lengthMm, widthMm, boundaryMm = CONFIG.BOUNDARY
     idx = 0;
     details.push(`你的腳長 ${cm(L)} 略小於${first.label}的建議範圍，${first.label}是這款最小的尺碼，建議試穿確認。`);
   } else if (L >= last.foot_max) {
-    if (L > last.foot_max + boundaryMm) {
-      return {
-        status: 'too_large', primary: last, alternative: null, bumped: false, lengthSize: last,
-        headline: '這款沒有適合你的尺碼',
-        details: [`你的腳長 ${cm(L)}，比這款最大的${last.label}（適合腳長 ${range(last)}）還大。最接近的是${last.label}，建議試穿確認。`],
-      };
-    }
-    idx = sizes.length - 1;
-    details.push(`你的腳長 ${cm(L)} 略大於${last.label}的建議範圍，${last.label}是這款最大的尺碼，建議試穿確認。`);
+    // 超過最大號的範圍就不建議硬穿：鞋子偏小比偏大難穿（實測腳長 27.7 穿 28 號已經剛好貼合）
+    return {
+      status: 'too_large', primary: last, alternative: null, bumped: false, lengthSize: last,
+      headline: '這款沒有適合你的尺碼',
+      details: [`你的腳長 ${cm(L)}，超過這款最大的${last.label}（適合腳長 ${range(last)}）。${last.label}可能會太小，建議試穿確認。`],
+    };
   } else {
     idx = sizes.findIndex((s) => L >= s.foot_min && L < s.foot_max);
     if (idx < 0) idx = sizes.findIndex((s) => s.foot_min > L); // 落在區間空隙時選大一號
@@ -87,14 +84,14 @@ export function recommend(chart, lengthMm, widthMm, boundaryMm = CONFIG.BOUNDARY
     }
   }
 
-  if (!bumped) {
-    const up = sizes[idx + 1], down = sizes[idx - 1];
-    if (up && L < base.foot_max && L >= base.foot_max - boundaryMm) {
+  // 只會往大一號建議，不建議小一號：量測有幾公釐誤差，建議小一號很容易穿不下
+  if (!bumped && L < base.foot_max && L >= base.foot_max - boundaryMm) {
+    const up = sizes[idx + 1];
+    if (up) {
       alternative = up;
       details.push(`你的腳長接近${base.label}的上限，${base.label}或${up.label}都可以。腳掌偏寬或喜歡寬鬆一點，選${up.label}。`);
-    } else if (down && L >= base.foot_min && L < base.foot_min + boundaryMm) {
-      alternative = down;
-      details.push(`你的腳長接近${down.label}的上限，${down.label}或${base.label}都可以。喜歡合腳選${down.label}，喜歡寬鬆選${base.label}。`);
+    } else {
+      details.push(`你的腳長接近${base.label}的上限，這款沒有更大的尺碼，建議試穿確認。`);
     }
   }
 
