@@ -5,3 +5,6 @@ test/photos/*.png
 test/photos/*.heic
 .DS_Store
 Thumbs.db
+
+# 從商品頁救回的原始說明圖，只放本機
+size-chart/原商品說明圖/
