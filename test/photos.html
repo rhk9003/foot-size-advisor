@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>實拍照片準確度測試</title>
+<style>
+  body { font: 14px/1.55 system-ui, -apple-system, "PingFang TC", "Noto Sans TC", sans-serif; margin: 16px; color: #222; }
+  h1 { font-size: 20px; }
+  code { background: #f3f3f3; padding: 1px 4px; border-radius: 4px; }
+  .bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 12px 0; }
+  button, input[type=file] { font: inherit; }
+  #summary { background: #f7f7f7; border-radius: 8px; padding: 10px 12px; white-space: pre-line; }
+  .wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; margin-top: 12px; }
+  th, td { border: 1px solid #ddd; padding: 6px 8px; text-align: left; vertical-align: top; }
+  th { background: #f5f5f5; }
+  .good { color: #1e8e3e; font-weight: 700; }
+  .bad { color: #d93025; font-weight: 700; }
+  canvas { max-width: 160px; display: block; }
+</style>
+</head>
+<body>
+<h1>實拍照片準確度測試</h1>
+<p>用真實照片檢查量測誤差，並算出建議的修正值。兩種用法：</p>
+<ol>
+  <li>直接選多張照片，檔名要包含人工用尺量的腳長和腳寬，例如 <code>245x98_赤腳_木地板.jpg</code>（mm）或 <code>24.5x9.8.jpg</code>（cm）。</li>
+  <li>照片放進 <code>test/photos/</code>，在 <code>index.json</code> 登記真值後按「跑資料夾」。格式見 <code>test/photos/README.md</code>。</li>
+</ol>
+<div class="bar">
+  <input type="file" id="pick" accept="image/*" multiple>
+  <button type="button" id="run-folder">跑資料夾 test/photos/index.json</button>
+</div>
+<div id="summary">還沒有結果</div>
+<div class="wrap">
+  <table>
+    <thead><tr><th>照片</th><th>自動抓紙</th><th>腳長 量 / 真 / 差</th><th>腳寬 量 / 真 / 差</th><th>腳跟對齊</th><th>自動標記</th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+</div>
+<script type="module">
+  import { loadImageFile, imageToCanvas } from '../js/image.js';
+  import { detectPaper, rectify } from '../js/paper.js';
+  import { measureFromCorners } from '../js/pipeline.js';
+
+  const rows = document.getElementById('rows');
+  const results = [];
+  const r1 = (v) => (Number.isFinite(v) ? v.toFixed(1) : '-');
+
+  function parseTruth(name) {
+    const m = name.match(/(\d+(?:\.\d+)?)\s*[x×X]\s*(\d+(?:\.\d+)?)/);
+    if (!m) return null;
+    let L = parseFloat(m[1]), W = parseFloat(m[2]);
+    if (L < 40) { L *= 10; W *= 10; }
+    return { length: L, width: W };
+  }
+
+  function preview(image, r) {
+    const ppm = 1.5;
+    const canvas = imageToCanvas(rectify(image, r.corners, ppm).image);
+    const ctx = canvas.getContext('2d');
+    const dot = (p, color) => {
+      ctx.beginPath();
+      ctx.arc(p.x * ppm, p.y * ppm, 5, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+    };
+    dot(r.markers.heel, '#2F80ED');
+    dot(r.markers.toe, '#F2994A');
+    dot(r.markers.left, '#27AE60');
+    dot(r.markers.right, '#27AE60');
+    return canvas;
+  }
+
+  function cell(tr, content, cls) {
+    const td = document.createElement('td');
+    if (content instanceof HTMLElement) td.appendChild(content); else td.textContent = content;
+    if (cls) td.className = cls;
+    tr.appendChild(td);
+  }
+
+  async function runOne(blob, name, truth) {
+    const row = { name, truth };
+    try {
+      const { image } = await loadImageFile(blob);
+      const det = detectPaper(image);
+      row.auto = det.ok;
+      row.reason = det.reason;
+      if (det.ok) {
+        const r = measureFromCorners(image, det.corners);
+        row.length = r.measurement.lengthMm;
+        row.width = r.measurement.widthMm;
+        row.heelAligned = r.flags.heelAligned;
+        row.canvas = preview(image, r);
+      }
+    } catch (e) {
+      row.error = e.message;
+    }
+    results.push(row);
+    const tr = document.createElement('tr');
+    cell(tr, name);
+    cell(tr, row.error ? `錯誤：${row.error}` : row.auto ? '成功' : `失敗（${row.reason}）`, row.auto ? 'good' : 'bad');
+    const dL = truth && Number.isFinite(row.length) ? row.length - truth.length : NaN;
+    const dW = truth && Number.isFinite(row.width) ? row.width - truth.width : NaN;
+    cell(tr, `${r1(row.length)} / ${truth ? r1(truth.length) : '?'} / ${r1(dL)}`, Number.isFinite(dL) ? (Math.abs(dL) <= 4 ? 'good' : 'bad') : '');
+    cell(tr, `${r1(row.width)} / ${truth ? r1(truth.width) : '?'} / ${r1(dW)}`, Number.isFinite(dW) ? (Math.abs(dW) <= 5 ? 'good' : 'bad') : '');
+    cell(tr, row.heelAligned === undefined ? '-' : row.heelAligned ? '是' : '否');
+    cell(tr, row.canvas || '-');
+    rows.appendChild(tr);
+    summarize();
+  }
+
+  function summarize() {
+    const n = results.length;
+    const auto = results.filter((r) => r.auto).length;
+    const withTruth = results.filter((r) => r.auto && r.truth);
+    const dLs = withTruth.map((r) => r.length - r.truth.length);
+    const dWs = withTruth.map((r) => r.width - r.truth.width);
+    const pct = (a, b) => (b ? `${Math.round((a / b) * 100)}%` : '-');
+    const mean = (a) => (a.length ? a.reduce((s, v) => s + v, 0) / a.length : NaN);
+    document.getElementById('summary').textContent = [
+      `照片 ${n} 張，自動抓到紙 ${auto} 張（${pct(auto, n)}，目標 80% 以上）`,
+      `腳長誤差 ±4 mm 內：${pct(dLs.filter((d) => Math.abs(d) <= 4).length, dLs.length)}（目標 90% 以上）`,
+      `腳寬誤差 ±5 mm 內：${pct(dWs.filter((d) => Math.abs(d) <= 5).length, dWs.length)}（目標 80% 以上）`,
+      `平均偏差：腳長 ${r1(mean(dLs))} mm，腳寬 ${r1(mean(dWs))} mm`,
+      dLs.length >= 10 ? `建議 js/config.js 設定 LENGTH_OFFSET_MM = ${r1(-mean(dLs))}、WIDTH_OFFSET_MM = ${r1(-mean(dWs))}（在現有值上加減）` : '累積 10 張以上有真值的照片，才會給修正值建議',
+    ].join('\n');
+  }
+
+  document.getElementById('pick').addEventListener('change', async (e) => {
+    for (const f of e.target.files) await runOne(f, f.name, parseTruth(f.name));
+  });
+
+  document.getElementById('run-folder').addEventListener('click', async () => {
+    let list = [];
+    try {
+      list = await fetch('photos/index.json', { cache: 'no-cache' }).then((r) => r.json());
+    } catch {
+      document.getElementById('summary').textContent = '讀不到 test/photos/index.json';
+      return;
+    }
+    if (!list.length) {
+      document.getElementById('summary').textContent = 'test/photos/index.json 還沒有登記照片';
+      return;
+    }
+    for (const item of list) {
+      const blob = await fetch(`photos/${item.file}`).then((r) => r.blob());
+      await runOne(blob, item.file, { length: item.length_mm, width: item.width_mm });
+    }
+  });
+</script>
+</body>
+</html>

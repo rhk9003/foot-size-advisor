@@ -1,0 +1,45 @@
+{
+  "sku": "11802051",
+  "name": "DK 氣墊鞋 EVA防水Q彈厚底夾腳拖鞋 A0235-46 奶茶色",
+  "product_url": "https://www.dk-shoes.com.tw/SalePage/Index/11802051",
+  "verified": false,
+  "source_note": "尺碼 23~28 號。銷售頁沒有腳長對照表，暫定「N 號適合腳長 N-0.5 ~ N+0.5 cm」，上線前請商品部確認後把 verified 改成 true。",
+  "unit": "mm",
+  "width_rule": {
+    "enabled": false,
+    "margin_mm": 0,
+    "note": "目前沒有鞋寬資料，暫不用腳寬判斷；補上各尺碼 shoe_width 後再啟用"
+  },
+  "sizes": [
+    {
+      "label": "23號",
+      "foot_min": 225,
+      "foot_max": 235
+    },
+    {
+      "label": "24號",
+      "foot_min": 235,
+      "foot_max": 245
+    },
+    {
+      "label": "25號",
+      "foot_min": 245,
+      "foot_max": 255
+    },
+    {
+      "label": "26號",
+      "foot_min": 255,
+      "foot_max": 265
+    },
+    {
+      "label": "27號",
+      "foot_min": 265,
+      "foot_max": 275
+    },
+    {
+      "label": "28號",
+      "foot_min": 275,
+      "foot_max": 285
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+# 實拍測試照片不進版控，避免公開個人照片
+test/photos/*.jpg
+test/photos/*.jpeg
+test/photos/*.png
+test/photos/*.heic
+.DS_Store
+Thumbs.db

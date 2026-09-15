@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>自動測試</title>
+<style>
+  body { font: 14px/1.5 system-ui, -apple-system, "PingFang TC", "Noto Sans TC", sans-serif; margin: 16px; color: #222; }
+  h1 { font-size: 20px; }
+  #summary { font-weight: 700; margin: 8px 0 12px; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { border: 1px solid #ddd; padding: 6px 8px; text-align: left; vertical-align: top; }
+  th { background: #f5f5f5; }
+  .pass { color: #1e8e3e; font-weight: 700; }
+  .fail { color: #d93025; font-weight: 700; }
+  .wrap { overflow-x: auto; }
+</style>
+</head>
+<body>
+<h1>自動測試</h1>
+<p>幾何計算、尺碼判斷，以及用模擬照片跑完整量測流程。實拍照片的準確度請用 <a href="photos.html">photos.html</a>。</p>
+<p id="summary">執行中…</p>
+<div class="wrap">
+  <table>
+    <thead><tr><th>分類</th><th>項目</th><th>結果</th><th>說明</th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+</div>
+<script type="module">
+  import { runAll } from './tests.js';
+  const rows = document.getElementById('rows');
+  const report = (r) => {
+    const tr = document.createElement('tr');
+    for (const [text, cls] of [[r.group], [r.name], [r.pass ? '通過' : '失敗', r.pass ? 'pass' : 'fail'], [r.detail]]) {
+      const td = document.createElement('td');
+      td.textContent = text;
+      if (cls) td.className = cls;
+      tr.appendChild(td);
+    }
+    rows.appendChild(tr);
+  };
+  runAll(report).then((results) => {
+    const failed = results.filter((r) => !r.pass).length;
+    document.getElementById('summary').textContent = `共 ${results.length} 項，通過 ${results.length - failed} 項，失敗 ${failed} 項`;
+    window.__results = results;
+    window.__done = true;
+  }).catch((e) => {
+    document.getElementById('summary').textContent = `測試執行錯誤：${e.message}`;
+    window.__error = String(e.stack || e);
+    window.__done = true;
+  });
+</script>
+</body>
+</html>
