@@ -78,7 +78,8 @@ export function segmentFoot(rect, ppm, wantDebug = false) {
     if (v < surfMin) surfMin = v;
     if (v > surfMax) surfMax = v;
   }
-  const unevenLight = surfMax / Math.max(1, surfMin) > CONFIG.SEG_UNEVEN_LIGHT;
+  const lightRatio = surfMax / Math.max(1, surfMin);
+  const unevenLight = lightRatio > CONFIG.SEG_UNEVEN_LIGHT;
 
   // 比紙暗很多（深色襪子），或顏色偏離紙張（皮膚）→ 視為腳。
   // 影子只是變暗的紙，顏色偏離很小；但深影常帶地板反射的暖色，所以越暗的地方要求越大的色差才算皮膚
@@ -113,7 +114,7 @@ export function segmentFoot(rect, ppm, wantDebug = false) {
   const minArea = CONFIG.SEG_MIN_AREA_MM2 * ppm * ppm;
   const big = stats.filter((s) => s.area >= minArea).sort((a, b) => b.area - a.area);
   const debug = wantDebug ? { score, rawMask, paperRef: { cr0, cg0, y0 }, coef } : null;
-  if (!big.length) return { mask: null, w, h, ppm, heelSide: null, stat: null, unevenLight, debug };
+  if (!big.length) return { mask: null, w, h, ppm, heelSide: null, stat: null, unevenLight, lightRatio, debug };
   const best = big[0];
 
   // 腳跟判斷：上下兩條短邊內側帶狀區的接觸像素數
@@ -132,7 +133,7 @@ export function segmentFoot(rect, ppm, wantDebug = false) {
   const out = new Uint8Array(n);
   for (let i = 0; i < n; i++) out[i] = labels[i] === best.label ? 1 : 0;
   const touchesSides = best.minX <= margin || best.maxX >= w - 1 - margin;
-  return { mask: out, w, h, ppm, heelSide, stat: best, contacts: { top, bottom }, touchesSides, unevenLight, debug };
+  return { mask: out, w, h, ppm, heelSide, stat: best, contacts: { top, bottom }, touchesSides, unevenLight, lightRatio, debug };
 }
 
 // 把分割結果轉 180 度（腳跟在上方時使用），轉完腳跟在下方

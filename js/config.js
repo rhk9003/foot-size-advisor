@@ -42,7 +42,7 @@ export const CONFIG = {
   SEG_CHROMA_T: 0.045,        // 亮處色度偏離紙超過此值視為皮膚
   SEG_CHROMA_T_DARK: 0.15,    // 暗處要偏離更多才算皮膚，避免帶暖色的深影被當成腳（實拍：腳暗側 0.2 以上、緊貼的深影 0.11~0.12）
   SEG_CHROMA_DARK_REL: 0.45,  // 亮度 ≤ 紙的 45% 用 SEG_CHROMA_T_DARK，≥ 60% 用 SEG_CHROMA_T，中間線性過渡
-  SEG_UNEVEN_LIGHT: 1.3,      // 紙面擬合亮度最亮/最暗超過此倍率視為光線不均，提示影子問題
+  SEG_UNEVEN_LIGHT: 2.0,      // 紙面擬合亮度最亮/最暗超過此倍率才提示影子（實拍：正常 1.55~1.57、側光深影 2.53）
   SEG_OPEN_MM: 1.5,
   SEG_CLOSE_MM: 3,
   SEG_MIN_AREA_MM2: 4000,

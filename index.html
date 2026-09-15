@@ -14,40 +14,31 @@
   <span class="brand">DK 高博士・拍照選尺碼</span>
 </header>
 
-<nav class="steps" id="steps" aria-label="進度">
-  <ol>
-    <li data-step="guide">準備</li>
-    <li data-step="photo">拍照</li>
-    <li data-step="confirm">確認</li>
-    <li data-step="result">結果</li>
-  </ol>
-</nav>
-
 <main class="wrap">
 
-  <!-- 引導卡片：一張只做一件事 -->
-  <section id="screen-intro" class="screen" data-step="guide">
+  <!-- 開頭：先看尺碼表，再選拍照量或直接輸入 -->
+  <section id="screen-intro" class="screen">
 
     <div class="card" data-card="0">
-      <figure class="card-illus">
-        <svg viewBox="0 0 240 190" role="img" aria-label="用手機拍下踩在 A4 紙上的腳，馬上得到尺碼建議">
-          <circle cx="120" cy="95" r="88" fill="#FFF2F1"/>
-          <rect x="72" y="8" width="96" height="174" rx="16" fill="#2f2f2f"/>
-          <rect x="79" y="22" width="82" height="146" rx="6" fill="#6b5a4e"/>
-          <rect x="91" y="36" width="58" height="82" fill="#fff"/>
-          <g transform="translate(120 118) scale(.92) translate(-100 -112)"><path d="M100 112c-11 0-12.5-10-11.5-20 1-10-3.5-20-4-32-.5-12 4-23 12.5-24 8.5-1 18 4 19.5 14 1.5 10-4.5 24-5.5 40-1 11.5.5 22-11 22z" fill="#f2c9a5" stroke="#c98f68" stroke-width="1.5"/></g>
-          <g stroke="#FF5353" stroke-width="3" fill="none" stroke-linecap="round"><path d="M86 46V31h15M139 31h15v15M154 108v15h-15M101 123H86v-15"/></g>
-          <rect x="126" y="132" width="100" height="38" rx="19" fill="#FF5353"/>
-          <text x="176" y="157" font-size="17" font-weight="700" text-anchor="middle" fill="#fff">建議 25號</text>
-        </svg>
-      </figure>
-      <h1 class="card-title">拍一張照，幫你挑對尺碼</h1>
-      <p class="card-tip">準備一張 A4 白紙，1 分鐘完成。照片只在手機上處理，不會上傳。</p>
-      <p class="product" id="product-name" hidden></p>
-      <div class="actions">
-        <button type="button" class="btn primary" data-next>開始</button>
-        <label class="btn link">我拍過了，直接開相機<input type="file" accept="image/*" capture="environment" class="file-input" data-file-input></label>
-        <button type="button" class="btn link" data-go-manual>我自己量好了，直接輸入</button>
+      <div class="product-head" id="intro-product" hidden>
+        <img id="intro-product-img" alt="" hidden>
+        <div>
+          <p class="product-head-kicker">尺碼對照表</p>
+          <h1 class="product-head-name" id="intro-product-name"></h1>
+        </div>
+      </div>
+      <h1 class="card-title" id="intro-fallback-title" hidden>拍一張照，幫你挑對尺碼</h1>
+      <div class="table-wrap" id="intro-chart" hidden>
+        <table class="size-table">
+          <thead><tr><th>尺碼</th><th>適合腳長</th><th>適合腳寬</th></tr></thead>
+          <tbody id="intro-chart-body"></tbody>
+        </table>
+      </div>
+      <p class="chart-note" id="intro-chart-note" hidden>單位公分。腳長接近上限，或腳寬超過，建議選大一號。</p>
+      <p class="card-question">你知道自己的腳長腳寬嗎？</p>
+      <div class="actions sticky">
+        <button type="button" class="btn primary" data-next>不知道，拍照幫我量</button>
+        <button type="button" class="btn secondary" data-go-manual>知道，直接輸入</button>
       </div>
     </div>
 
@@ -67,7 +58,7 @@
       </figure>
       <h1 class="card-title">A4 白紙放在深色地板上</h1>
       <p class="card-tip">白色磁磚分不出紙，墊一塊深色布或毛巾就好。</p>
-      <div class="actions">
+      <div class="actions sticky">
         <button type="button" class="btn primary" data-next>放好了</button>
         <button type="button" class="btn link" data-prev>上一步</button>
       </div>
@@ -88,7 +79,7 @@
       </figure>
       <h1 class="card-title">紙貼牆，腳跟貼牆踩上去</h1>
       <p class="card-tip">赤腳最準。長褲請捲到小腿，另一隻腳不要踩到紙。</p>
-      <div class="actions">
+      <div class="actions sticky">
         <button type="button" class="btn primary" data-next>踩好了</button>
         <button type="button" class="btn link" data-prev>上一步</button>
       </div>
@@ -120,7 +111,7 @@
       </figure>
       <h1 class="card-title">手機拿到腳尖正上方，拍到紙的四個角</h1>
       <p class="card-tip">請家人幫忙拍更準。用一般鏡頭，不要用 0.5x 廣角。</p>
-      <div class="actions">
+      <div class="actions sticky">
         <label class="btn primary">開始拍照<input type="file" accept="image/*" capture="environment" class="file-input" data-file-input></label>
         <label class="btn secondary">從相簿選照片<input type="file" accept="image/*" class="file-input" data-file-input></label>
         <button type="button" class="btn link" data-prev>上一步</button>
@@ -129,69 +120,40 @@
   </section>
 
   <!-- 處理中 -->
-  <section id="screen-processing" class="screen center" data-step="photo" hidden>
+  <section id="screen-processing" class="screen center" hidden>
     <div class="spinner" aria-hidden="true"></div>
     <p id="processing-text" role="status">處理中…</p>
   </section>
 
-  <!-- 拍完照發現問題：告訴他原因和怎麼修 -->
-  <section id="screen-feedback" class="screen" data-step="photo" hidden>
+  <!-- 照片有問題：一句原因、一句怎麼修 -->
+  <section id="screen-feedback" class="screen" hidden>
     <figure class="card-illus" id="feedback-illus"></figure>
     <h1 class="card-title" id="feedback-title"></h1>
     <p class="card-tip" id="feedback-fix"></p>
-    <div class="actions">
+    <details class="debug" data-debug hidden><summary>除錯資訊</summary><div class="debug-body" id="feedback-debug"></div></details>
+    <div class="actions sticky">
       <label class="btn primary">重拍<input type="file" accept="image/*" capture="environment" class="file-input" data-file-input></label>
       <label class="btn secondary">從相簿選照片<input type="file" accept="image/*" class="file-input" data-file-input></label>
-      <button type="button" class="btn link" id="btn-feedback-continue">不用重拍，我自己調整</button>
+      <div class="link-row">
+        <button type="button" class="btn link" id="btn-feedback-continue" hidden>仍然看結果</button>
+        <button type="button" class="btn link" data-go-manual>改用輸入腳長</button>
+      </div>
     </div>
   </section>
 
   <!-- 照片讀取失敗 -->
-  <section id="screen-error" class="screen" data-step="photo" hidden>
+  <section id="screen-error" class="screen" hidden>
     <h1 id="error-title">出了點問題</h1>
     <p id="error-message"></p>
-    <div class="actions">
+    <div class="actions sticky">
       <label class="btn primary">重拍<input type="file" accept="image/*" capture="environment" class="file-input" data-file-input></label>
       <label class="btn secondary">從相簿選照片<input type="file" accept="image/*" class="file-input" data-file-input></label>
-      <button type="button" class="btn link" data-go-manual>改用直接輸入腳長腳寬</button>
+      <button type="button" class="btn link" data-go-manual>改用輸入腳長</button>
     </div>
-  </section>
-
-  <!-- 確認紙角 -->
-  <section id="screen-corners" class="screen" data-step="confirm" hidden>
-    <h1>圓點有對準紙的四個角嗎？</h1>
-    <p class="hint" id="corners-hint"></p>
-    <div class="stage" id="corners-stage"></div>
-    <p class="warn" id="corners-warn" hidden></p>
-    <div class="actions">
-      <button type="button" class="btn primary" id="btn-corners-next">對準了，下一步</button>
-      <label class="btn secondary">重拍<input type="file" accept="image/*" capture="environment" class="file-input" data-file-input></label>
-    </div>
-    <details class="debug" data-debug hidden><summary>除錯資訊</summary><div class="debug-body" id="corners-debug"></div></details>
-  </section>
-
-  <!-- 確認腳 -->
-  <section id="screen-foot" class="screen" data-step="confirm" hidden>
-    <h1>圓點有對準腳嗎？</h1>
-    <p class="legend-inline">
-      <span><i class="dot" style="background:#2F80ED"></i>腳跟</span>
-      <span><i class="dot" style="background:#F2994A"></i>腳尖</span>
-      <span><i class="dot" style="background:#27AE60"></i>腳掌最寬處</span>
-      <span><i class="dot" style="background:rgba(255,83,83,.45)"></i>程式判斷的腳</span>
-    </p>
-    <p class="live" id="foot-live" aria-live="polite"></p>
-    <div class="stage" id="foot-stage"></div>
-    <p class="hint" id="foot-hint"></p>
-    <p class="warn" id="foot-warn" hidden></p>
-    <div class="actions">
-      <button type="button" class="btn primary" id="btn-foot-next">對準了，看尺碼建議</button>
-      <button type="button" class="btn link" id="btn-foot-back">回上一步調整紙角</button>
-    </div>
-    <details class="debug" data-debug hidden><summary>除錯資訊</summary><div class="debug-body" id="foot-debug"></div></details>
   </section>
 
   <!-- 結果 -->
-  <section id="screen-result" class="screen" data-step="result" hidden>
+  <section id="screen-result" class="screen" hidden>
     <div class="result-card">
       <p class="result-product" id="result-product" hidden></p>
       <h1 class="result-headline" id="result-headline"></h1>
@@ -201,24 +163,29 @@
       </div>
       <ul class="result-details" id="result-details"></ul>
     </div>
+    <div class="measure-preview" id="result-preview" hidden>
+      <div id="result-preview-canvas"></div>
+      <p>紅色是量到的腳，橘線是腳尖、綠線是腳掌最寬處。看起來沒對準的話，請重拍一張。</p>
+    </div>
     <div class="product-list" id="result-products" hidden></div>
     <div class="table-wrap" id="result-table-wrap" hidden>
       <table class="size-table">
-        <thead><tr><th>尺碼</th><th>適合腳長</th><th>鞋長</th><th>鞋寬</th></tr></thead>
+        <thead><tr><th>尺碼</th><th>適合腳長</th><th>適合腳寬</th></tr></thead>
         <tbody id="result-table"></tbody>
       </table>
     </div>
     <p class="notice">量測誤差大約 0.3~0.5 cm。左右腳大小常常不一樣，建議兩隻腳都量，以大的那隻為準。</p>
-    <div class="actions">
+    <details class="debug" data-debug hidden><summary>除錯資訊</summary><div class="debug-body" id="result-debug"></div></details>
+    <div class="actions sticky">
       <a class="btn primary" id="btn-back-product" hidden>回商品頁</a>
       <button type="button" class="btn secondary" id="btn-restart">量另一隻腳</button>
     </div>
   </section>
 
-  <!-- 手動輸入 -->
-  <section id="screen-manual" class="screen" data-step="manual" hidden>
-    <h1>直接輸入腳長腳寬</h1>
-    <p class="hint">腳長是腳跟最後面到最長腳趾前端的距離，腳寬是腳掌最寬處的寬度。</p>
+  <!-- 直接輸入 -->
+  <section id="screen-manual" class="screen" hidden>
+    <h1>輸入腳長腳寬</h1>
+    <p class="hint">腳長是腳跟到最長腳趾的距離，不是平常穿的鞋子號碼，通常比鞋號小一點。</p>
     <form id="manual-form" novalidate>
       <label class="field">
         <span>腳長（cm）</span>
@@ -229,9 +196,9 @@
         <input type="number" inputmode="decimal" step="0.1" min="6" max="14" id="manual-width" placeholder="例如 9.8">
       </label>
       <p class="warn" id="manual-warn" hidden></p>
-      <div class="actions">
+      <div class="actions sticky">
         <button type="submit" class="btn primary">看尺碼建議</button>
-        <button type="button" class="btn link" id="btn-manual-back">回上一頁</button>
+        <button type="button" class="btn link" id="btn-manual-back">回尺碼表</button>
       </div>
     </form>
   </section>

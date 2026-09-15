@@ -1,38 +1,26 @@
-// 流程控制：引導卡片 → 拍照 → （有問題就引導重拍）→ 確認紙角 → 確認腳 → 結果
+// 流程：尺碼表（選拍照量或直接輸入）→ 拍照引導 → 拍照 → 自動量測（有問題就引導重拍）→ 結果
+// 不提供人工拖點修正：量測結果在結果頁用縮圖呈現，看起來不對就重拍
 import { CONFIG } from './config.js';
 import { loadImageFile, imageToCanvas, maskToCanvas, grayToCanvas } from './image.js';
-import { detectPaper, rectify, aspectCheck, defaultCorners, checkQuad } from './paper.js';
-import { assignPaperCorners, dist } from './geometry.js';
+import { detectPaper, rectify } from './paper.js';
 import { measureFromCorners } from './pipeline.js';
-import { computeMeasurements, measurementConfidence, sanityCheck } from './measure.js';
+import { sanityCheck } from './measure.js';
 import { loadChart, loadCatalog, recommend, cm } from './sizing.js';
-import { PointEditor } from './ui-adjust.js';
 import { ISSUES, footIssue } from './guidance.js';
 
 const params = new URLSearchParams(location.search);
 const DEBUG = params.get('debug') === '1';
 const SKU = params.get('sku');
 const BACK_URL = safeUrl(params.get('back'));
-const STEP_ORDER = ['guide', 'photo', 'confirm', 'result'];
-const COLORS = { heel: '#2F80ED', toe: '#F2994A', width: '#27AE60', paper: '#FF5353' };
 const CARD_COUNT = 4;
+const COLORS = { heel: '#2F80ED', toe: '#F2994A', width: '#27AE60' };
 
 const state = {
-  chart: null,
-  catalog: [], // 沒有指定商品時，全部商品的尺碼表
+  chart: null,       // 網址指定的商品尺碼表
+  catalog: [],       // 沒指定商品時的全部商品
+  chartLoaded: false,
   card: 0,
-  photo: null,
-  photoCanvas: null,
-  detection: null,
-  corners: null,
-  autoCorners: false,
-  seg: null,
-  flags: null,
-  rectCanvas: null,
-  maskCanvas: null,
-  cornerAttempts: 0,
-  editor: null,
-  feet: [], // 已量過的腳（最多兩隻）
+  feet: [],          // 拍照量過的腳（最多兩隻）
 };
 
 const $ = (id) => document.getElementById(id);
@@ -47,17 +35,20 @@ function safeUrl(v) {
   }
 }
 
-const nextFrame = () => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 30)));
+// 讓「處理中」畫面先畫出來再開始運算；畫面暫停繪製時（背景分頁等）用逾時備援，不會卡住
+const nextFrame = () => new Promise((resolve) => {
+  let done = false;
+  const finish = () => {
+    if (done) return;
+    done = true;
+    setTimeout(resolve, 30);
+  };
+  requestAnimationFrame(finish);
+  setTimeout(finish, 150);
+});
 
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach((s) => { s.hidden = s.id !== id; });
-  const idx = STEP_ORDER.indexOf($(id).dataset.step);
-  $('steps').hidden = idx < 0;
-  document.querySelectorAll('#steps li').forEach((li) => {
-    const i = STEP_ORDER.indexOf(li.dataset.step);
-    li.classList.toggle('active', i === idx);
-    li.classList.toggle('done', idx >= 0 && i < idx);
-  });
   window.scrollTo(0, 0);
 }
 
@@ -78,261 +69,150 @@ function showError(title, message) {
   showScreen('screen-error');
 }
 
-// 拍完照發現問題：一句原因、一句怎麼修、錯與對的示意圖
-function showFeedback(issueKey, onContinue) {
+// ---------- 尺碼表 ----------
+
+const introChart = () => state.chart || state.catalog[0] || null;
+
+// 腳寬規則是「腳寬 ≥ 鞋寬就大一號」，所以適合腳寬是鞋寬少 0.1 cm 以下
+function widthLimitText(chart, s) {
+  if (!chart.width_rule || !chart.width_rule.enabled || !Number.isFinite(s.shoe_width)) return null;
+  return `${((s.shoe_width - 1) / 10).toFixed(1)} 以下`;
+}
+
+function fillChartTable(tbody, wrap, chart, rec) {
+  tbody.innerHTML = '';
+  const hasWidth = chart.sizes.some((s) => widthLimitText(chart, s));
+  wrap.classList.toggle('no-width', !hasWidth);
+  for (const s of [...chart.sizes].sort((a, b) => a.foot_min - b.foot_min)) {
+    const tr = document.createElement('tr');
+    if (rec && s === rec.primary) tr.className = 'is-primary';
+    else if (rec && s === rec.alternative) tr.className = 'is-alt';
+    const cells = [s.label, `${(s.foot_min / 10).toFixed(1)}~${(s.foot_max / 10).toFixed(1)}`, widthLimitText(chart, s) || '-'];
+    for (const text of cells) {
+      const td = document.createElement('td');
+      td.textContent = text;
+      tr.appendChild(td);
+    }
+    tbody.appendChild(tr);
+  }
+  wrap.hidden = false;
+}
+
+function renderIntro() {
+  const chart = introChart();
+  $('intro-product').hidden = !chart;
+  $('intro-chart-note').hidden = !chart;
+  $('intro-fallback-title').hidden = !!chart || !state.chartLoaded;
+  if (!chart) {
+    $('intro-chart').hidden = true;
+    return;
+  }
+  $('intro-product-name').textContent = chart.family_name || chart.name;
+  const img = $('intro-product-img');
+  if (chart.image) {
+    img.src = chart.image;
+    img.hidden = false;
+  } else {
+    img.hidden = true;
+  }
+  fillChartTable($('intro-chart-body'), $('intro-chart'), chart, null);
+}
+
+// ---------- 拍照 → 自動量測 ----------
+
+async function handleFile(file) {
+  if (!file) return;
+  showProcessing('正在讀取照片…');
+  await nextFrame();
+  let photo;
+  try {
+    photo = (await loadImageFile(file)).image;
+  } catch (e) {
+    console.error(e);
+    showError('照片讀不出來', '這張照片的格式可能不支援。請重拍一張，或改用輸入腳長。');
+    return;
+  }
+  showProcessing('正在量腳…');
+  await nextFrame();
+
+  let det;
+  try {
+    det = detectPaper(photo, DEBUG);
+  } catch (e) {
+    console.error(e);
+    det = { ok: false, reason: 'not_found', corners: null };
+  }
+  if (!det.ok) {
+    showFeedback(det.reason, null, { photo, det });
+    return;
+  }
+
+  let r;
+  try {
+    r = measureFromCorners(photo, det.corners, DEBUG);
+  } catch (e) {
+    console.error(e);
+    showError('量測失敗', '處理照片時發生錯誤。請重拍一張，或改用輸入腳長。');
+    return;
+  }
+  const issue = footIssue(r.flags) || (sanityCheck(r.measurement).ok ? null : 'bad_measure');
+  const go = () => showPhotoResult(photo, det, r);
+  if (issue) showFeedback(issue, ISSUES[issue] && ISSUES[issue].soft ? go : null, { photo, det, r });
+  else go();
+}
+
+// 照片有問題：一句原因、一句怎麼修、錯與對的示意圖。輕微問題可以選「仍然看結果」
+function showFeedback(issueKey, onContinue, ctx) {
   const issue = ISSUES[issueKey] || ISSUES.not_found;
   $('feedback-illus').innerHTML = issue.svg;
   $('feedback-title').textContent = issue.title;
   $('feedback-fix').textContent = issue.fix;
   const btn = $('btn-feedback-continue');
-  btn.textContent = issue.kind === 'paper' ? '不用重拍，我自己點出紙角' : '不用重拍，我自己調整位置';
+  btn.hidden = !onContinue;
   btn.onclick = onContinue;
   showScreen('screen-feedback');
+  if (DEBUG && ctx) renderDebug($('feedback-debug'), ctx);
 }
 
-function destroyEditor() {
-  if (state.editor) state.editor.destroy();
-  state.editor = null;
-}
-
-// ---------- 拍照 / 讀檔 ----------
-
-async function handleFile(file) {
-  if (!file) return;
-  destroyEditor();
-  showProcessing('正在讀取照片…');
-  await nextFrame();
-  try {
-    const { image, canvas } = await loadImageFile(file);
-    state.photo = image;
-    state.photoCanvas = canvas;
-  } catch (e) {
-    console.error(e);
-    showError('照片讀不出來', '這張照片的格式可能不支援。請重拍一張，或改用直接輸入腳長腳寬。');
-    return;
-  }
-  showProcessing('正在找紙的四個角…');
-  await nextFrame();
-  let det;
-  try {
-    det = detectPaper(state.photo, DEBUG);
-  } catch (e) {
-    console.error(e);
-    det = { ok: false, reason: 'not_found', corners: null };
-  }
-  state.detection = det;
-  if (det.ok) showCorners(det.corners);
-  else showFeedback(det.reason, () => showCorners(det.corners));
-}
-
-// ---------- 確認紙角 ----------
-
-// corners 為 null 時進入放置模式：使用者依序點四個角，沒點完不能下一步
-function showCorners(corners) {
-  showScreen('screen-corners');
-  const placing = !corners;
-  const start = corners || defaultCorners(state.photo.width, state.photo.height);
-  state.cornerAttempts = 0;
-  $('corners-warn').hidden = true;
-  destroyEditor();
-  state.editor = new PointEditor($('corners-stage'), {
-    source: state.photoCanvas,
-    points: start.map((c, i) => ({ id: `c${i}`, x: c.x, y: c.y, color: COLORS.paper })),
-    units: 1,
-    tapToMove: true,
-    placeMode: placing,
-    drawOverlay: drawCornerOverlay,
-    onChange: () => { $('corners-warn').hidden = true; updateCornerHint(placing); },
-  });
-  updateCornerHint(placing);
-  if (DEBUG) renderCornerDebug();
-}
-
-function updateCornerHint(placing) {
-  const det = state.detection;
-  const hint = $('corners-hint');
-  const next = $('btn-corners-next');
-  if (!state.editor.allPlaced()) {
-    const left = 4 - state.editor.placedCount();
-    hint.classList.add('strong');
-    hint.textContent = `請點一下紙的四個角，順序不限。還要點 ${left} 個。`;
-    next.disabled = true;
-    return;
-  }
-  next.disabled = false;
-  if (placing) {
-    hint.classList.add('strong');
-    hint.textContent = '四個角都點好了。放大看一下，沒對準就用手指拖過去。';
-  } else if (det.ok) {
-    hint.classList.remove('strong');
-    hint.textContent = '沒對準的話，用手指把圓點拖到紙角。';
-  } else {
-    hint.classList.add('strong');
-    hint.textContent = '程式不太確定紙在哪。請確認四個圓點都在紙角上，沒對準就拖過去。';
-  }
-}
-
-function drawCornerOverlay(ctx, toScreen, pts) {
-  const q = assignPaperCorners(pts).map(toScreen);
-  ctx.beginPath();
-  q.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
-  ctx.closePath();
-  ctx.fillStyle = 'rgba(255,83,83,.14)';
-  ctx.fill();
-  ctx.lineWidth = 2;
-  ctx.strokeStyle = COLORS.paper;
-  ctx.stroke();
-}
-
-async function confirmCorners() {
-  if (!state.editor.allPlaced()) return;
-  const raw = assignPaperCorners(state.editor.getPoints().map((p) => ({ x: p.x, y: p.y })));
-  const warn = $('corners-warn');
-  // 兩道檢查：形狀像不像 A4、四條邊是不是真的落在紙的邊緣上（會先把圓點吸附到邊緣）
-  const asp = aspectCheck(raw, state.photo.width, state.photo.height, CONFIG.PAPER_ASPECT_TOL_MANUAL);
-  const quad = checkQuad(state.photo, raw);
-  const problems = [];
-  if (!quad.ok) problems.push('圓點好像沒有對準紙的邊緣');
-  if (!asp.ok) problems.push(`四個圓點圍出來的形狀不像 A4 紙（長寬比 ${asp.ratio.toFixed(2)}，A4 是 1.41）`);
-  if (problems.length) {
-    // 完全不像紙要警告兩次才放行（白色地板上找不到紙邊時仍有路可走），普通不符警告一次
-    const hardFail = quad.meanSupport < CONFIG.QUAD_CHECK_HARD_FAIL;
-    if (state.cornerAttempts < (hardFail ? 2 : 1)) {
-      warn.textContent = hardFail
-        ? `${problems.join('；')}。請放大看，把四個圓點都拖到紙角上，或重拍一張。`
-        : `${problems.join('；')}。請確認圓點都在紙角上；確定沒問題就再按一次下一步。`;
-      warn.hidden = false;
-      state.cornerAttempts++;
-      return;
-    }
-  }
-  const corners = quad.ok ? quad.corners : raw;
-  const det = state.detection;
-  const moved = !det.ok || !det.corners || corners.some((c) => Math.min(...det.corners.map((d) => dist(c, d))) > 3);
-  state.autoCorners = det.ok && !moved;
-
-  destroyEditor();
-  showProcessing('正在量腳…');
-  await nextFrame();
-  let r;
-  try {
-    r = measureFromCorners(state.photo, corners, DEBUG);
-    state.corners = r.corners;
-    state.seg = r.seg;
-    state.flags = r.flags;
-    state.rectCanvas = imageToCanvas(rectify(state.photo, r.corners, CONFIG.RECT_PX_PER_MM).image);
-    state.maskCanvas = r.seg.mask ? maskToCanvas(r.seg.mask, r.seg.w, r.seg.h, [255, 83, 83, 80]) : null;
-  } catch (e) {
-    console.error(e);
-    showError('量測失敗', '處理照片時發生錯誤。請重拍一張，或改用直接輸入腳長腳寬。');
-    return;
-  }
-  const issue = footIssue(r.flags);
-  const go = () => {
-    showFoot(r.markers);
-    if (DEBUG) renderFootDebug(r.segRect, r.flip);
-  };
-  if (issue) showFeedback(issue, go);
-  else go();
-}
-
-// ---------- 確認腳 ----------
-
-function markersFromPoints(pts) {
-  const m = {};
-  for (const p of pts) m[p.id] = { x: p.x, y: p.y };
-  return m;
-}
-
-function showFoot(markers) {
-  showScreen('screen-foot');
-  $('foot-warn').hidden = true;
-  destroyEditor();
-  state.editor = new PointEditor($('foot-stage'), {
-    source: state.rectCanvas,
-    points: [
-      { id: 'heel', label: '腳跟', color: COLORS.heel, ...markers.heel },
-      { id: 'toe', label: '腳尖', color: COLORS.toe, ...markers.toe },
-      { id: 'left', label: '寬', color: COLORS.width, ...markers.left },
-      { id: 'right', label: '寬', color: COLORS.width, ...markers.right },
-    ],
-    units: CONFIG.RECT_PX_PER_MM,
-    drawOverlay: drawFootOverlay,
-    onChange: (pts) => {
-      $('foot-warn').hidden = true;
-      updateFootLive(pts);
-    },
-  });
-  const m = updateFootLive(state.editor.getPoints());
-  const conf = measurementConfidence({ autoCorners: state.autoCorners, flags: state.flags, ...m });
-  const low = conf < CONFIG.CONFIDENCE_CONFIRM || !state.flags.heelAligned;
-  const uneven = !!(state.seg && state.seg.unevenLight);
-  const hint = $('foot-hint');
-  hint.classList.toggle('strong', low || uneven);
-  if (state.flags.noFoot) hint.textContent = '沒找到腳的位置，請把圓點拖到腳跟、腳尖和腳掌最寬處。';
-  else if (!state.flags.heelAligned) hint.textContent = '腳跟沒有貼齊紙邊，請確認藍色圓點在腳跟最後面。';
-  else if (uneven) hint.textContent = '紙上有明顯的影子，影子不算腳。請確認紅色範圍和綠色圓點只在腳上，超出去就拖回來。';
-  else if (low) hint.textContent = '這張不太確定，請仔細看圓點有沒有對準，沒對準就拖過去。';
-  else hint.textContent = '紅色是程式判斷的腳。沒對準的話，用手指拖過去。';
-}
-
-function updateFootLive(pts) {
-  const m = computeMeasurements(markersFromPoints(pts));
-  $('foot-live').textContent = `腳長 ${cm(m.lengthMm)}・腳寬 ${cm(m.widthMm)}`;
-  return m;
-}
-
-function drawFootOverlay(ctx, toScreen, pts) {
-  if (state.maskCanvas) {
-    const br = toScreen({ x: CONFIG.PAPER_W_MM, y: CONFIG.PAPER_H_MM });
-    ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(state.maskCanvas, 0, 0, br.x, br.y);
-  }
-  const mk = markersFromPoints(pts);
-  const { heel, toe, left, right } = mk;
-  const { ux, uy, nx, ny } = computeMeasurements(mk).axis;
-  const line = (a, b, color, width = 2, dash = []) => {
-    const p = toScreen(a), q = toScreen(b);
+// 結果頁的縮圖：校正後的紙、紅色是量到的腳、橘線腳尖、綠線腳掌最寬處
+function drawPreview(photo, r) {
+  const ppm = 2.5;
+  const canvas = imageToCanvas(rectify(photo, r.corners, ppm).image);
+  const ctx = canvas.getContext('2d');
+  if (r.seg.mask) ctx.drawImage(maskToCanvas(r.seg.mask, r.seg.w, r.seg.h, [255, 83, 83, 90]), 0, 0, canvas.width, canvas.height);
+  const { heel, toe, left, right } = r.markers;
+  const { ux, uy, nx, ny } = r.measurement.axis;
+  const line = (a, b, color, dash = []) => {
     ctx.beginPath();
     ctx.setLineDash(dash);
-    ctx.moveTo(p.x, p.y);
-    ctx.lineTo(q.x, q.y);
-    ctx.lineWidth = width;
+    ctx.moveTo(a.x * ppm, a.y * ppm);
+    ctx.lineTo(b.x * ppm, b.y * ppm);
+    ctx.lineWidth = 6;
     ctx.strokeStyle = color;
     ctx.stroke();
     ctx.setLineDash([]);
   };
-  line({ x: 0, y: heel.y }, { x: CONFIG.PAPER_W_MM, y: heel.y }, COLORS.heel, 2, [6, 4]);
-  line(heel, toe, COLORS.toe, 1.5, [4, 4]);
-  line({ x: toe.x - nx * 30, y: toe.y - ny * 30 }, { x: toe.x + nx * 30, y: toe.y + ny * 30 }, COLORS.toe, 2.5);
+  const hy = Math.min(heel.y, CONFIG.PAPER_H_MM - 1.5);
+  line({ x: 0, y: hy }, { x: CONFIG.PAPER_W_MM, y: hy }, COLORS.heel, [14, 8]);
+  line({ x: toe.x - nx * 45, y: toe.y - ny * 45 }, { x: toe.x + nx * 45, y: toe.y + ny * 45 }, COLORS.toe);
   for (const p of [left, right]) {
-    line({ x: p.x - ux * 35, y: p.y - uy * 35 }, { x: p.x + ux * 35, y: p.y + uy * 35 }, COLORS.width, 2.5);
+    line({ x: p.x - ux * 45, y: p.y - uy * 45 }, { x: p.x + ux * 45, y: p.y + uy * 45 }, COLORS.width);
   }
-  const t = (right.x - left.x) * nx + (right.y - left.y) * ny;
-  line(left, { x: left.x + nx * t, y: left.y + ny * t }, COLORS.width, 1.5, [4, 3]);
+  return canvas;
 }
 
-function confirmFoot() {
-  const m = computeMeasurements(markersFromPoints(state.editor.getPoints()));
-  const warn = $('foot-warn');
-  const s = sanityCheck(m);
-  if (!s.ok && warn.hidden) {
-    warn.textContent = s.field === 'length'
-      ? `量到的腳長 ${cm(m.lengthMm)} 不太合理，可能紙角沒對準，或不是 A4 紙。確認圓點位置，沒問題再按一次。`
-      : `量到的腳寬 ${cm(m.widthMm)} 不太合理，確認兩個綠色圓點在腳掌最寬處，沒問題再按一次。`;
-    warn.hidden = false;
-    return;
-  }
-  destroyEditor();
+function showPhotoResult(photo, det, r) {
+  const m = r.measurement;
   state.feet = [...state.feet, { lengthMm: m.lengthMm, widthMm: m.widthMm }].slice(-2);
   const lengthMm = Math.max(...state.feet.map((f) => f.lengthMm));
   const widthMm = Math.max(...state.feet.map((f) => f.widthMm));
-  showResult(lengthMm, widthMm, state.feet);
+  showResult(lengthMm, widthMm, { preview: drawPreview(photo, r), unevenLight: !!r.seg.unevenLight, fromPhoto: true });
+  if (DEBUG) renderDebug($('result-debug'), { photo, det, r });
 }
 
 // ---------- 結果 ----------
 
-function showResult(lengthMm, widthMm, feet = []) {
+function showResult(lengthMm, widthMm, { preview = null, unevenLight = false, fromPhoto = false } = {}) {
   showScreen('screen-result');
   $('result-length').textContent = cm(lengthMm);
   $('result-width').textContent = Number.isFinite(widthMm) ? cm(widthMm) : '未提供';
@@ -343,54 +223,54 @@ function showResult(lengthMm, widthMm, feet = []) {
     li.textContent = text;
     list.appendChild(li);
   };
+  const feet = fromPhoto ? state.feet : [];
   if (feet.length === 2) {
     addDetail(`已量兩隻腳（腳長 ${cm(feet[0].lengthMm)}、${cm(feet[1].lengthMm)}），用比較大的那隻判斷。`);
   }
-  $('btn-restart').textContent = feet.length === 1 ? '量另一隻腳' : '重新量';
 
-  const tbody = $('result-table');
-  tbody.innerHTML = '';
+  const previewHost = $('result-preview-canvas');
+  previewHost.innerHTML = '';
+  if (preview) previewHost.appendChild(preview);
+  $('result-preview').hidden = !preview;
+
+  const restart = $('btn-restart');
+  if (fromPhoto && feet.length === 1) {
+    restart.textContent = '量另一隻腳';
+    restart.onclick = () => showCard(3);
+  } else {
+    restart.textContent = '重新開始';
+    restart.onclick = () => { state.feet = []; showCard(0); };
+  }
+
   const chart = state.chart;
-  $('result-product').hidden = !chart;
+  const back = $('btn-back-product');
+  const backUrl = BACK_URL || (chart && chart.product_url) || null;
+  back.hidden = !backUrl;
+  if (backUrl) back.href = backUrl;
+
   $('result-products').hidden = true;
+  $('result-table-wrap').hidden = true;
+  $('result-product').hidden = !chart;
+
   if (!chart) {
-    $('result-table-wrap').hidden = true;
     if (state.catalog.length) {
       renderCatalog(state.catalog, lengthMm, widthMm, addDetail);
-      return;
+    } else {
+      $('result-headline').textContent = '量好了';
+      addDetail(SKU ? '找不到這個商品的尺碼表，請回商品頁對照尺碼表選購。' : '沒有指定商品，請回商品頁對照尺碼表選購。');
     }
-    $('result-headline').textContent = '量好了';
-    addDetail(SKU ? '找不到這個商品的尺碼表，請回商品頁對照尺碼表選購。' : '沒有指定商品，請回商品頁對照尺碼表選購。');
-    return;
-  }
-  $('result-product').textContent = chart.name || '';
-  const rec = recommend(chart, lengthMm, widthMm);
-  $('result-headline').textContent = rec.headline;
-  rec.details.forEach(addDetail);
-  if (chart.verified === false) addDetail('（測試中）這個商品的尺碼區間還沒確認，實際請以商品頁說明為準。');
-  if (!Number.isFinite(widthMm) && chart.width_rule && chart.width_rule.enabled) {
-    addDetail('沒有提供腳寬，只用腳長判斷。腳掌偏寬的話建議選大一號。');
-  }
-  const hasDims = chart.sizes.some((s) => Number.isFinite(s.shoe_length) || Number.isFinite(s.shoe_width));
-  $('result-table-wrap').classList.toggle('no-shoe-dims', !hasDims);
-  for (const s of [...chart.sizes].sort((a, b) => a.foot_min - b.foot_min)) {
-    const tr = document.createElement('tr');
-    if (s === rec.primary) tr.className = 'is-primary';
-    else if (s === rec.alternative) tr.className = 'is-alt';
-    const cells = [
-      s.label,
-      `${(s.foot_min / 10).toFixed(1)}~${(s.foot_max / 10).toFixed(1)}`,
-      Number.isFinite(s.shoe_length) ? (s.shoe_length / 10).toFixed(1) : '-',
-      Number.isFinite(s.shoe_width) ? (s.shoe_width / 10).toFixed(1) : '-',
-    ];
-    for (const c of cells) {
-      const td = document.createElement('td');
-      td.textContent = c;
-      tr.appendChild(td);
+  } else {
+    $('result-product').textContent = chart.name || '';
+    const rec = recommend(chart, lengthMm, widthMm);
+    $('result-headline').textContent = rec.headline;
+    rec.details.forEach(addDetail);
+    if (chart.verified === false) addDetail('（測試中）這個商品的尺碼區間還沒確認，實際請以商品頁說明為準。');
+    if (!Number.isFinite(widthMm) && chart.width_rule && chart.width_rule.enabled) {
+      addDetail('沒有提供腳寬，只用腳長判斷。腳掌偏寬的話建議選大一號。');
     }
-    tbody.appendChild(tr);
+    fillChartTable($('result-table'), $('result-table-wrap'), chart, rec);
   }
-  $('result-table-wrap').hidden = false;
+  if (unevenLight) addDetail('照片裡有明顯的影子，腳寬可能量大一點。');
 }
 
 // 沒有指定商品：每個商品各算一次建議尺碼，列成可點的商品卡片
@@ -447,7 +327,7 @@ function renderCatalog(catalog, lengthMm, widthMm, addDetail) {
   host.hidden = false;
 }
 
-// ---------- 手動輸入 ----------
+// ---------- 直接輸入 ----------
 
 function submitManual(e) {
   e.preventDefault();
@@ -470,7 +350,7 @@ function submitManual(e) {
   showResult(L * 10, Number.isFinite(W) ? W * 10 : NaN);
 }
 
-// ---------- 除錯畫面（?debug=1） ----------
+// ---------- 除錯（?debug=1） ----------
 
 function appendCanvas(host, canvas, caption) {
   const p = document.createElement('p');
@@ -478,41 +358,31 @@ function appendCanvas(host, canvas, caption) {
   host.append(p, canvas);
 }
 
-function renderCornerDebug() {
-  const host = $('corners-debug');
+function renderDebug(host, { photo, det, r }) {
   host.innerHTML = '';
-  const det = state.detection;
   const pre = document.createElement('pre');
   pre.textContent = JSON.stringify({
-    ok: det.ok, reason: det.reason, aspect: det.aspect, refinedSides: det.refinedSides, score: det.score,
-    otsu: det.debug && det.debug.otsu, borderBright: det.debug && det.debug.borderBrightRatio,
-    candidates: (det.candidates || []).slice(0, 5).map((c) => ({
-      score: +c.score.toFixed(3), ratio: +c.ratio.toFixed(3), quadFit: +c.quadFit.toFixed(3),
-      fill: +c.fill.toFixed(3), touches: c.touches, threshold: c.threshold,
-    })),
-    photo: [state.photo.width, state.photo.height],
+    photo: photo ? [photo.width, photo.height] : null,
+    detect: det ? {
+      ok: det.ok, reason: det.reason, aspect: det.aspect, score: det.score, support: det.support,
+      otsu: det.debug && det.debug.otsu, borderBright: det.debug && det.debug.borderBrightRatio,
+      corners: det.corners ? det.corners.map((c) => [Math.round(c.x), Math.round(c.y)]) : null,
+    } : null,
+    measure: r ? {
+      lengthMm: Math.round(r.measurement.lengthMm * 10) / 10, widthMm: Math.round(r.measurement.widthMm * 10) / 10,
+      flags: r.flags, heelSide: r.seg.heelSide, flipped: r.flip, unevenLight: r.seg.unevenLight,
+    } : null,
   }, null, 1);
   host.appendChild(pre);
-  if (det.debug && det.debug.mask) {
+  if (det && det.debug && det.debug.mask) {
     const { mask, w, h } = det.debug.mask;
-    appendCanvas(host, maskToCanvas(mask, w, h, [255, 255, 255, 255]), '白度門檻遮罩（Otsu）');
+    appendCanvas(host, maskToCanvas(mask, w, h, [255, 255, 255, 255]), '紙張分數門檻遮罩');
   }
-}
-
-function renderFootDebug(segRect, flip) {
-  const host = $('foot-debug');
-  host.innerHTML = '';
-  const seg = state.seg;
-  const pre = document.createElement('pre');
-  pre.textContent = JSON.stringify({
-    heelSide: seg.heelSide, flipped: flip, contacts: seg.contacts, touchesSides: seg.touchesSides,
-    flags: state.flags, paperRef: seg.debug && seg.debug.paperRef,
-  }, null, 1);
-  host.appendChild(pre);
-  appendCanvas(host, imageToCanvas(segRect), '分割用校正圖（翻轉前）');
-  if (seg.debug && seg.debug.score) appendCanvas(host, grayToCanvas(seg.debug.score, seg.w, seg.h), '腳部分數（越亮越像腳，127 為門檻）');
-  if (seg.debug && seg.debug.rawMask) appendCanvas(host, maskToCanvas(seg.debug.rawMask, seg.w, seg.h), '門檻後原始遮罩（翻轉前）');
-  if (seg.mask) appendCanvas(host, maskToCanvas(seg.mask, seg.w, seg.h), '最終腳部遮罩（腳跟在下）');
+  if (r) {
+    appendCanvas(host, imageToCanvas(r.segRect), '分割用校正圖（翻轉前）');
+    if (r.seg.debug && r.seg.debug.score) appendCanvas(host, grayToCanvas(r.seg.debug.score, r.seg.w, r.seg.h), '腳部分數（127 為門檻）');
+    if (r.seg.mask) appendCanvas(host, maskToCanvas(r.seg.mask, r.seg.w, r.seg.h), '最終腳部遮罩（腳跟在下）');
+  }
 }
 
 // ---------- 初始化 ----------
@@ -528,41 +398,15 @@ function init() {
   document.querySelectorAll('[data-next]').forEach((b) => b.addEventListener('click', () => showCard(state.card + 1)));
   document.querySelectorAll('[data-prev]').forEach((b) => b.addEventListener('click', () => showCard(state.card - 1)));
   document.querySelectorAll('[data-go-manual]').forEach((b) => b.addEventListener('click', () => showScreen('screen-manual')));
-  $('btn-manual-back').addEventListener('click', () => showCard(state.card));
+  $('btn-manual-back').addEventListener('click', () => showCard(0));
   $('manual-form').addEventListener('submit', submitManual);
-  $('btn-corners-next').addEventListener('click', confirmCorners);
-  $('btn-foot-next').addEventListener('click', confirmFoot);
-  $('btn-foot-back').addEventListener('click', () => {
-    if (state.photo && state.corners) showCorners(state.corners);
-  });
-  $('btn-restart').addEventListener('click', () => {
-    destroyEditor();
-    if (state.feet.length !== 1) state.feet = [];
-    showCard(3); // 已經準備好了，直接回到拍照那張
-  });
-  if (BACK_URL) {
-    const a = $('btn-back-product');
-    a.href = BACK_URL;
-    a.hidden = false;
-  }
   if (DEBUG) document.querySelectorAll('[data-debug]').forEach((d) => { d.hidden = false; d.open = true; });
 
-  loadChart(SKU).then((chart) => {
+  loadChart(SKU).then(async (chart) => {
     state.chart = chart;
-    const el = $('product-name');
-    if (chart) {
-      el.textContent = `正在幫「${chart.name}」選尺碼`;
-      el.hidden = false;
-      return;
-    }
-    // 沒指定商品（或編號錯誤）：載入全部商品，結果頁列出各商品建議尺碼
-    loadCatalog().then((catalog) => {
-      state.catalog = catalog;
-      if (catalog.length) {
-        el.textContent = '量完會列出每雙鞋適合你的尺碼';
-        el.hidden = false;
-      }
-    });
+    if (!chart) state.catalog = await loadCatalog();
+    state.chartLoaded = true;
+    renderIntro();
   });
   showCard(0);
 }

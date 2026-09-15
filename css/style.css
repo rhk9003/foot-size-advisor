@@ -9,6 +9,7 @@
   --soft: #FFF2F1;
   --warn: #8A4B00;
   --warn-bg: #FFF1DE;
+  --topbar-h: 44px;
   color-scheme: light;
 }
 
@@ -18,82 +19,51 @@ body {
   margin: 0;
   background: #fff;
   color: var(--ink);
-  font: 16px/1.65 system-ui, -apple-system, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+  font: 16px/1.6 system-ui, -apple-system, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
 }
 
 [hidden] { display: none !important; }
 
 .topbar {
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  background: var(--brand);
-  color: #fff;
-  padding: 12px 16px;
-  padding-top: calc(12px + env(safe-area-inset-top));
-  font-weight: 700;
-  text-align: center;
-}
-
-.steps { background: #fff; border-bottom: 1px solid var(--line); }
-.steps ol {
-  display: flex;
-  gap: 4px;
-  list-style: none;
-  margin: 0 auto;
-  padding: 8px 12px;
-  max-width: 480px;
-}
-.steps li {
-  flex: 1;
-  position: relative;
-  padding-top: 10px;
-  text-align: center;
-  font-size: 12px;
-  color: #aaa;
-}
-.steps li::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 8%;
-  right: 8%;
-  height: 4px;
-  border-radius: 2px;
-  background: #e6e6e6;
-}
-.steps li.done { color: var(--muted); }
-.steps li.done::before { background: #ffc2c2; }
-.steps li.active { color: var(--brand-dark); font-weight: 700; }
-.steps li.active::before { background: var(--brand); }
-
-.wrap { max-width: 480px; margin: 0 auto; padding: 16px 16px 48px; }
-
-h1 { font-size: 22px; line-height: 1.35; margin: 4px 0 8px; }
-h2 { display: flex; align-items: center; gap: 8px; font-size: 17px; margin: 0 0 6px; }
-
-.sub { color: var(--muted); margin: 0 0 12px; }
-.product { background: var(--soft); border-radius: 8px; padding: 8px 12px; font-size: 14px; margin: 0 0 12px; }
-
-.card { display: flex; flex-direction: column; min-height: calc(100vh - 150px); min-height: calc(100svh - 150px); }
-.card-step { margin: 0 0 6px; font-size: 14px; font-weight: 700; color: var(--brand-dark); }
-.card-illus {
+  height: var(--topbar-h);
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 0 0 14px;
-  padding: 12px;
-  background: #faf7f4;
-  border-radius: 16px;
+  padding: 0 16px;
+  background: var(--brand);
+  color: #fff;
+  font-weight: 700;
+  font-size: 15px;
 }
-.card-illus svg { display: block; width: 100%; height: auto; max-height: 36vh; }
-.card-title { font-size: 24px; line-height: 1.35; margin: 4px 0 8px; }
-.card-tip { font-size: 16px; color: var(--muted); margin: 0 0 8px; }
-.card .actions { margin-top: auto; padding-top: 12px; }
 
-.notice { font-size: 14px; color: var(--muted); background: #f7f7f7; border-radius: 10px; padding: 10px 12px; }
+.wrap { max-width: 480px; margin: 0 auto; padding: 12px 16px 0; }
 
-.actions { display: grid; gap: 10px; margin-top: 16px; }
+h1 { font-size: 21px; line-height: 1.35; margin: 4px 0 8px; }
+
+/* 每個畫面至少填滿一個手機螢幕，按鈕區固定貼在畫面底部，內容再長也看得到按鈕 */
+.screen {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - var(--topbar-h) - 12px);
+  min-height: calc(100dvh - var(--topbar-h) - 12px);
+}
+.screen > form { display: flex; flex-direction: column; flex: 1; }
+.card { display: flex; flex-direction: column; flex: 1; }
+
+.actions {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+.actions.sticky {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  margin: auto -16px 0;
+  padding: 18px 16px calc(12px + env(safe-area-inset-bottom));
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0), #fff 16px);
+}
+.link-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 16px; }
 
 .btn {
   position: relative;
@@ -101,8 +71,8 @@ h2 { display: flex; align-items: center; gap: 8px; font-size: 17px; margin: 0 0 
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 50px;
-  padding: 10px 16px;
+  min-height: 48px;
+  padding: 8px 16px;
   border: 2px solid var(--brand);
   border-radius: 12px;
   font: inherit;
@@ -115,7 +85,8 @@ h2 { display: flex; align-items: center; gap: 8px; font-size: 17px; margin: 0 0 
 .btn.primary { background: var(--brand); color: #fff; }
 .btn.secondary { background: #fff; color: var(--brand-dark); }
 .btn.link {
-  min-height: 44px;
+  min-height: 40px;
+  padding: 4px 8px;
   border: 0;
   background: none;
   color: var(--muted);
@@ -124,7 +95,6 @@ h2 { display: flex; align-items: center; gap: 8px; font-size: 17px; margin: 0 0 
   text-decoration: underline;
 }
 .btn:active { transform: translateY(1px); }
-.btn:disabled { opacity: .45; cursor: not-allowed; }
 
 /* 透明的檔案選擇框蓋在按鈕上，點按鈕就是點選檔 */
 .file-input {
@@ -137,7 +107,34 @@ h2 { display: flex; align-items: center; gap: 8px; font-size: 17px; margin: 0 0 
   font-size: 0;
 }
 
-.center { text-align: center; padding-top: 64px; }
+/* 開頭尺碼表 */
+.product-head { display: flex; align-items: center; gap: 12px; margin: 4px 0 10px; }
+.product-head img { width: 60px; height: 60px; object-fit: cover; border-radius: 10px; background: #f5f5f5; flex: none; }
+.product-head-kicker { margin: 0; font-size: 13px; font-weight: 700; color: var(--brand-dark); }
+.product-head-name { margin: 0; font-size: 17px; line-height: 1.4; }
+.chart-note { margin: 8px 0 0; font-size: 14px; color: var(--muted); }
+.card-question { margin: 16px 0 0; font-size: 18px; font-weight: 700; text-align: center; }
+
+/* 拍照引導卡片 */
+.card-step { margin: 0 0 6px; font-size: 14px; font-weight: 700; color: var(--brand-dark); }
+.card-illus {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 0 12px;
+  padding: 10px;
+  background: #faf7f4;
+  border-radius: 16px;
+}
+.card-illus svg { display: block; width: 100%; height: auto; max-height: 30vh; max-height: 30dvh; }
+.card-title { font-size: 22px; line-height: 1.35; margin: 4px 0 6px; }
+.card-tip { font-size: 16px; color: var(--muted); margin: 0 0 8px; }
+
+.notice { font-size: 14px; color: var(--muted); background: #f7f7f7; border-radius: 10px; padding: 10px 12px; margin: 14px 0 0; }
+.hint { color: var(--muted); font-size: 15px; margin: 0 0 12px; }
+.warn { color: var(--warn); background: var(--warn-bg); border-radius: 10px; padding: 10px 12px; font-size: 15px; }
+
+.center { justify-content: center; align-items: center; text-align: center; }
 .spinner {
   width: 44px;
   height: 44px;
@@ -149,37 +146,31 @@ h2 { display: flex; align-items: center; gap: 8px; font-size: 17px; margin: 0 0 
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-.hint { color: var(--muted); font-size: 15px; margin: 0 0 10px; }
-.hint.strong { color: var(--warn); background: var(--warn-bg); border-radius: 10px; padding: 8px 12px; }
-
-.stage {
-  display: flex;
-  justify-content: center;
-  min-height: 200px;
-  background: #222;
-  border-radius: 12px;
-  overflow: hidden;
-}
-.editor-canvas { display: block; touch-action: none; -webkit-user-select: none; user-select: none; }
-
-.warn { color: var(--warn); background: var(--warn-bg); border-radius: 10px; padding: 10px 12px; font-size: 15px; }
-
-.live { font-size: 18px; font-weight: 700; text-align: center; margin: 0 0 8px; }
-
-.legend-inline { display: flex; flex-wrap: wrap; gap: 14px; margin: 0 0 6px; font-size: 15px; color: var(--muted); }
-.dot { display: inline-block; width: 10px; height: 10px; margin-right: 6px; border-radius: 50%; vertical-align: middle; }
-
-.result-card { background: var(--soft); border-radius: 16px; padding: 18px 16px; text-align: center; }
+/* 結果 */
+.result-card { background: var(--soft); border-radius: 16px; padding: 16px; text-align: center; }
 .result-product { margin: 0; font-size: 14px; color: var(--muted); }
-.result-headline { font-size: 28px; color: var(--brand-dark); margin: 6px 0 12px; }
+.result-headline { font-size: 28px; color: var(--brand-dark); margin: 4px 0 10px; }
 .result-measure { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
-.result-measure div { background: #fff; border-radius: 12px; padding: 8px 14px; min-width: 120px; }
+.result-measure div { background: #fff; border-radius: 12px; padding: 6px 14px; min-width: 120px; }
 .result-measure span { display: block; font-size: 13px; color: var(--muted); }
 .result-measure strong { font-size: 20px; }
-.result-details { text-align: left; margin: 14px 0 0; padding-left: 20px; font-size: 15px; }
+.result-details { text-align: left; margin: 12px 0 0; padding-left: 20px; font-size: 15px; }
 .result-details li { margin-bottom: 6px; }
 
-.product-list { display: grid; gap: 10px; margin-top: 16px; }
+.measure-preview {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.measure-preview canvas { display: block; width: 88px; height: auto; border-radius: 6px; }
+.measure-preview p { margin: 0; font-size: 14px; color: var(--muted); }
+
+.product-list { display: grid; gap: 10px; margin-top: 14px; }
 .product-list h2 { font-size: 17px; margin: 0; }
 .product-card {
   display: grid;
@@ -199,13 +190,14 @@ h2 { display: flex; align-items: center; gap: 8px; font-size: 17px; margin: 0 0 
 .product-card-size { font-size: 18px; color: var(--brand-dark); }
 .product-card-go { font-size: 14px; color: var(--brand-dark); white-space: nowrap; }
 
-.table-wrap { overflow-x: auto; margin-top: 16px; }
-.size-table { width: 100%; border-collapse: collapse; font-size: 14px; text-align: center; }
-.size-table th, .size-table td { border: 1px solid var(--line); padding: 6px 4px; }
-.size-table th { background: #f7f7f7; font-weight: 600; }
+.table-wrap { overflow-x: auto; margin-top: 12px; }
+.size-table { width: 100%; border-collapse: collapse; font-size: 15px; text-align: center; }
+.size-table th, .size-table td { border: 1px solid var(--line); padding: 7px 4px; }
+.size-table th { background: #f7f7f7; font-weight: 600; font-size: 14px; }
+.size-table td:first-child { font-weight: 700; }
 .size-table tr.is-primary td { background: #FFD9D6; font-weight: 700; }
 .size-table tr.is-alt td { background: #FFF0EE; }
-.no-shoe-dims th:nth-child(n+3), .no-shoe-dims td:nth-child(n+3) { display: none; }
+.no-width th:nth-child(3), .no-width td:nth-child(3) { display: none; }
 
 .field { display: grid; gap: 4px; margin-bottom: 14px; font-size: 15px; }
 .field input { width: 100%; padding: 10px 12px; border: 1px solid #ccc; border-radius: 10px; font: inherit; font-size: 18px; }

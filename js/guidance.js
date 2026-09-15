@@ -1,4 +1,5 @@
 // 拍完照後的問題引導：每種問題一句原因、一句怎麼修、一張「錯 vs 對」示意圖
+// soft: true 的問題量測仍然可用，可以選「仍然看結果」；其他的只能重拍或改用輸入
 // 圖都是固定字串，沒有外部資料
 
 const SKIN = 'fill="#f2c9a5" stroke="#c98f68" stroke-width="1.5"';
@@ -66,6 +67,7 @@ export const ISSUES = {
   },
   no_foot: {
     kind: 'foot',
+    soft: false,
     title: '紙上找不到腳',
     fix: '腳要整個踩在紙上。白襪跟紙分不出來，請赤腳或穿深色襪子。',
     svg: twoPanel(
@@ -75,6 +77,7 @@ export const ISSUES = {
   },
   heel_gap: {
     kind: 'foot',
+    soft: true,
     title: '腳跟沒有貼齊紙邊',
     fix: '紙貼牆、腳跟也貼牆踩上去，腳跟就會切齊紙邊。',
     svg: twoPanel(
@@ -85,15 +88,24 @@ export const ISSUES = {
   },
   foot_side: {
     kind: 'foot',
+    soft: true,
     title: '腳太靠近紙的側邊',
     fix: '把腳放在紙的正中間，再拍一次。',
     svg: twoPanel(floor() + paper() + foot(64, 72), clean(), '腳靠在紙邊不行，要放中間'),
   },
   toe_edge: {
     kind: 'foot',
+    soft: true,
     title: '腳尖碰到紙邊了',
     fix: '紙要直放，腳跟貼著紙的短邊。',
     svg: twoPanel(floor() + paper(10, 26, 72, 51) + foot(46, 77), clean(), '紙橫放腳會超出去，要直放'),
+  },
+  bad_measure: {
+    kind: 'foot',
+    soft: false,
+    title: '量出來的數字不太合理',
+    fix: '請確認用的是 A4 影印紙、四個角都拍到、腳整個踩在紙上，再拍一次。',
+    svg: twoPanel(floor() + paper(36, -14, 60, 86) + foot(66, 72, 0.8), clean(), '紙要完整入鏡、腳要整個踩在紙上'),
   },
 };
 
