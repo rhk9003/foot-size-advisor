@@ -7,7 +7,7 @@ const MAG_RADIUS = 58;
 const MAG_ZOOM = 3;
 
 export class PointEditor {
-  constructor(host, { source, points, units = 1, drawOverlay = null, onChange = null, tapToMove = false, maxHeightRatio = 0.62 }) {
+  constructor(host, { source, points, units = 1, drawOverlay = null, onChange = null, tapToMove = false, placeMode = false, maxHeightRatio = 0.62 }) {
     this.host = host;
     this.source = source;
     this.units = units;
@@ -15,6 +15,8 @@ export class PointEditor {
     this.drawOverlay = drawOverlay;
     this.onChange = onChange;
     this.tapToMove = tapToMove;
+    // 放置模式：圓點一開始不顯示，使用者每點一下就放一個，放完四個才進入拖動模式
+    this.placed = points.map(() => !placeMode);
     this.maxHeightRatio = maxHeightRatio;
     this.active = null;
     this.pointer = null;
@@ -78,8 +80,30 @@ export class PointEditor {
     return { x: e.clientX - r.left, y: e.clientY - r.top };
   }
 
+  allPlaced() {
+    return this.placed.every(Boolean);
+  }
+
+  placedCount() {
+    return this.placed.filter(Boolean).length;
+  }
+
   onDown(e) {
     const pos = this.eventPos(e);
+    if (!this.allPlaced()) {
+      const idx = this.placed.indexOf(false);
+      const p = this.points[idx];
+      Object.assign(p, this.toWorld(pos.x, pos.y));
+      this.placed[idx] = true;
+      this.offset = { x: 0, y: 0 };
+      e.preventDefault();
+      try { this.canvas.setPointerCapture(e.pointerId); } catch { /* 合成事件沒有真正的指標 */ }
+      this.active = p;
+      this.pointer = pos;
+      this.draw();
+      if (this.onChange) this.onChange(this.getPoints(), true);
+      return;
+    }
     let best = null, bestD = Infinity;
     for (const p of this.points) {
       const s = this.toScreen(p);
@@ -96,7 +120,7 @@ export class PointEditor {
       this.offset = { x: s.x - pos.x, y: s.y - pos.y };
     }
     e.preventDefault();
-    this.canvas.setPointerCapture(e.pointerId);
+    try { this.canvas.setPointerCapture(e.pointerId); } catch { /* 合成事件沒有真正的指標 */ }
     this.active = best;
     this.pointer = pos;
     this.draw();
@@ -136,12 +160,12 @@ export class PointEditor {
     ctx.clearRect(0, 0, this.cssW, this.cssH);
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(this.source, 0, 0, this.cssW, this.cssH);
-    if (this.drawOverlay) {
+    if (this.drawOverlay && this.allPlaced()) {
       ctx.save();
       this.drawOverlay(ctx, (p) => this.toScreen(p), this.getPoints());
       ctx.restore();
     }
-    for (const p of this.points) this.drawHandle(ctx, p, p === this.active);
+    this.points.forEach((p, i) => { if (this.placed[i]) this.drawHandle(ctx, p, p === this.active); });
     if (this.active) this.drawMagnifier(ctx, this.active);
   }
 

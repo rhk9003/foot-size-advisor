@@ -49,7 +49,7 @@ export const ISSUES = {
   not_found: {
     kind: 'paper',
     title: '照片裡找不到 A4 白紙',
-    fix: '紙要攤平，影子不要蓋住紙，四個角都要拍到。',
+    fix: '紙要攤平、四個角都拍到、影子不要蓋住紙。也可以不重拍，直接點出紙的四個角。',
     svg: twoPanel(
       floor() + paper() + foot(46, 72) + '<ellipse cx="30" cy="40" rx="22" ry="34" fill="rgba(0,0,0,.45)"/>',
       clean(),

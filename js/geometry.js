@@ -106,6 +106,66 @@ export function reducePolygon(pts, k) {
   return p;
 }
 
+// 凸包 → 四邊形：用「四條最外側的支撐邊」相交，而不是把凸包縮成四個頂點。
+// 紙角被腿或影子遮住時，凸包會少一角，但看得到的邊仍是直線，延長相交就能還原那個角。
+// 回傳 { quad, coverage }：coverage 是四條線各自由多長的凸包邊支撐（相對最長邊），0 表示用端點退而求其次
+export function hullToQuad(hull) {
+  const n = hull.length;
+  if (n < 4) return null;
+  const edges = [];
+  for (let i = 0; i < n; i++) {
+    const p = hull[i], q = hull[(i + 1) % n];
+    const len = dist(p, q);
+    if (len < 1e-6) continue;
+    edges.push({ p, q, len, dx: (q.x - p.x) / len, dy: (q.y - p.y) / len });
+  }
+  if (edges.length < 4) return null;
+  const angleDiff = (a, b) => {
+    const c = Math.abs(a.dx * b.dx + a.dy * b.dy); // |cos|，方向相反也算同向
+    return Math.acos(Math.min(1, c));
+  };
+  const longest = edges.reduce((m, e) => (e.len > m.len ? e : m));
+  const famA = edges.filter((e) => angleDiff(e, longest) < (25 * Math.PI) / 180);
+  let famB = edges.filter((e) => { const d = angleDiff(e, longest); return d > (65 * Math.PI) / 180; });
+  const longestB = famB.length ? famB.reduce((m, e) => (e.len > m.len ? e : m)) : null;
+  if (longestB) famB = edges.filter((e) => angleDiff(e, longestB) < (25 * Math.PI) / 180);
+  const dirB = longestB || { dx: -longest.dy, dy: longest.dx, len: 0 };
+
+  // 對某個方向族：沿法線找最外側的兩條邊；太短的邊不可信，改用最外側頂點做一條平行線
+  const extremes = (fam, dir, refLen) => {
+    const nx = -dir.dy, ny = dir.dx;
+    const off = (pt) => pt.x * nx + pt.y * ny;
+    const minLen = 0.12 * refLen;
+    let lo = null, hi = null;
+    for (const e of fam) {
+      if (e.len < minLen) continue;
+      const o = (off(e.p) + off(e.q)) / 2;
+      if (!lo || o < lo.o) lo = { o, e };
+      if (!hi || o > hi.o) hi = { o, e };
+    }
+    const lineOf = (e) => ({ nx: -e.dy, ny: e.dx, c: -e.dy * e.p.x + e.dx * e.p.y });
+    const fallback = (pick) => {
+      let best = null;
+      for (const pt of hull) { const o = off(pt); if (!best || pick(o, best.o)) best = { o, pt }; }
+      return { nx, ny, c: off(best.pt) };
+    };
+    return {
+      lo: lo ? lineOf(lo.e) : fallback((o, b) => o < b),
+      hi: hi ? lineOf(hi.e) : fallback((o, b) => o > b),
+      cov: [lo ? lo.e.len / refLen : 0, hi ? hi.e.len / refLen : 0],
+    };
+  };
+  const A = extremes(famA, longest, longest.len);
+  const refB = longestB ? longestB.len : longest.len / Math.SQRT2;
+  const B = extremes(famB, dirB, refB);
+  const corners = [
+    intersectLines(A.lo, B.lo), intersectLines(B.lo, A.hi),
+    intersectLines(A.hi, B.hi), intersectLines(B.hi, A.lo),
+  ];
+  if (corners.some((c) => !c)) return null;
+  return { quad: assignPaperCorners(corners), coverage: [...A.cov, ...B.cov] };
+}
+
 // 依重心角度排序；螢幕座標 y 向下，角度遞增即畫面上的順時針
 export function orderClockwise(pts) {
   const cx = pts.reduce((s, p) => s + p.x, 0) / pts.length;

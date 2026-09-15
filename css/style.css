@@ -124,6 +124,7 @@ h2 { display: flex; align-items: center; gap: 8px; font-size: 17px; margin: 0 0 
   text-decoration: underline;
 }
 .btn:active { transform: translateY(1px); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
 
 /* 透明的檔案選擇框蓋在按鈕上，點按鈕就是點選檔 */
 .file-input {

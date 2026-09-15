@@ -1,10 +1,10 @@
 // A4 紙偵測與透視校正
 import { CONFIG } from './config.js';
 import {
-  downscale, whiteness, boxBlur, otsu, open, labelComponents, rowExtremes, sampleMap, warpPerspective,
+  downscale, paperScore, localStd, boxBlur, otsu, open, labelComponents, rowExtremes, sampleMap, warpPerspective,
 } from './cv.js';
 import {
-  convexHull, reducePolygon, polygonArea, assignPaperCorners, estimateAspect,
+  convexHull, hullToQuad, polygonArea, assignPaperCorners, estimateAspect,
   robustFitLine, intersectLines, homography, dist,
 } from './geometry.js';
 
@@ -36,10 +36,14 @@ function evaluateCandidate(labels, w, h, st, sx, sy, W, H, threshold) {
   const hull = convexHull(pts);
   if (hull.length < 4) return null;
   const hullArea = polygonArea(hull);
-  const quad = reducePolygon(hull, 4);
-  const quadFit = polygonArea(quad) / hullArea;
+  const hq = hullToQuad(hull);
+  if (!hq) return null;
+  // 四邊形由支撐線構成，一定包住凸包；quadFit = 凸包佔四邊形的比例，
+  // 完整的紙接近 1，一個角被腿遮住約 0.85~0.95，形狀根本不是矩形時會很低
+  const quadArea = polygonArea(hq.quad);
+  const quadFit = quadArea > 0 ? hullArea / quadArea : 0;
   const fill = st.area / hullArea;
-  const corners = assignPaperCorners(quad.map((p) => ({ x: p.x * sx, y: p.y * sy })));
+  const corners = assignPaperCorners(hq.quad.map((p) => ({ x: p.x * sx, y: p.y * sy })));
   const minSide = Math.min(...[0, 1, 2, 3].map((i) => dist(corners[i], corners[(i + 1) % 4])));
   if (minSide < 0.08 * Math.max(W, H)) return null;
   // 幾乎等於整個畫面的四邊形，通常是亮色地板和紙連成一片，不採用
@@ -48,19 +52,19 @@ function evaluateCandidate(labels, w, h, st, sx, sy, W, H, threshold) {
   // 碰到畫面邊緣：紙角被切掉，或和亮色背景連在一起，自動結果不可信
   const touches = st.minX <= 0 || st.minY <= 0 || st.maxX >= w - 1 || st.maxY >= h - 1;
   const score =
-    Math.pow(Math.max(0, (quadFit - 0.8) / 0.2), 2) *
+    Math.pow(Math.min(1, Math.max(0, (quadFit - 0.55) / 0.35)), 2) *
     Math.max(0, 1 - aspectErr / 0.35) *
     Math.min(1, fill / 0.55) *
     Math.min(1, Math.sqrt(st.area / (0.2 * w * h))) *
     (touches ? 0.3 : 1);
-  return { corners, score, quadFit, fill, ratio, aspectErr, touches, threshold, area: st.area };
+  return { corners, score, quadFit, fill, ratio, aspectErr, touches, threshold, area: st.area, coverage: hq.coverage };
 }
 
 // 回傳 { ok, corners:[TL,TR,BR,BL], aspect, candidates, debug }
 export function detectPaper(img, wantDebug = false) {
   const { image: small, sx, sy } = downscale(img, CONFIG.DETECT_MAX_SIDE);
   const w = small.width, h = small.height, total = w * h;
-  const wmap = boxBlur(whiteness(small), w, h, 1);
+  const wmap = paperMap(small);
   const t0 = otsu(wmap);
   // 畫面邊框有多少比例是亮的：紙拍在深色地板上時邊框應該是暗的，大部分都亮代表地板太白
   let borderBright = 0, borderCount = 0;
@@ -71,6 +75,7 @@ export function detectPaper(img, wantDebug = false) {
   const candidates = [];
   const tried = new Set();
   let debugMask = null;
+  let bigTouching = false; // 有夠大的亮區塊碰到畫面邊緣：紙很可能被切出畫面
   for (const off of CONFIG.PAPER_THRESH_OFFSETS) {
     const t = Math.min(250, t0 + off);
     if (tried.has(t)) continue;
@@ -82,6 +87,7 @@ export function detectPaper(img, wantDebug = false) {
     const { labels, stats } = labelComponents(mask, w, h);
     for (const st of stats) {
       if (st.area < CONFIG.PAPER_MIN_AREA_RATIO * total) continue;
+      if (st.minX <= 0 || st.minY <= 0 || st.maxX >= w - 1 || st.maxY >= h - 1) bigTouching = true;
       const cand = evaluateCandidate(labels, w, h, st, sx, sy, img.width, img.height, t);
       if (cand) candidates.push(cand);
     }
@@ -91,12 +97,13 @@ export function detectPaper(img, wantDebug = false) {
   const debug = wantDebug ? { otsu: t0, borderBrightRatio, mask: debugMask, candidates: candidates.slice(0, 5) } : null;
 
   if (!best || best.score < CONFIG.PAPER_MIN_SCORE) {
-    const hint = best && best.score > 0.1 ? best.corners : defaultCorners(img.width, img.height);
-    // 失敗原因：white_floor 地板太白 / cut_off 紙角沒入鏡 / not_found 其他
+    // 沒有像樣的候選就不給提示位置（corners = null），讓使用者逐點四個角
+    const hasHint = best && best.score >= CONFIG.PAPER_MIN_HINT_SCORE;
+    // 失敗原因：white_floor 地板太白 / cut_off 紙角沒入鏡（要有像樣的候選才敢這樣說）/ not_found 其他
     let reason = 'not_found';
     if (borderBrightRatio > CONFIG.PAPER_WHITE_FLOOR_BORDER) reason = 'white_floor';
-    else if (best && best.touches) reason = 'cut_off';
-    return { ok: false, corners: hint, reason, borderBrightRatio, candidates, debug };
+    else if ((hasHint && best.touches) || bigTouching) reason = 'cut_off';
+    return { ok: false, corners: hasHint ? best.corners : null, reason, borderBrightRatio, candidates, debug };
   }
   const refined = refineCorners(img, best.corners);
   const asp = aspectCheck(refined.corners, img.width, img.height, CONFIG.PAPER_ASPECT_TOL_AUTO);
@@ -106,16 +113,30 @@ export function detectPaper(img, wantDebug = false) {
     corners: refined.corners,
     aspect: asp.ratio,
     refinedSides: refined.refinedSides,
+    support: refined.support,
     score: best.score,
     candidates,
     debug,
   };
 }
 
-// 在原圖解析度沿每條邊的法線找明暗交界，擬合直線後求交點
+// 紙張分數圖：有顏色、有紋理的地方都壓成 0，只剩平滑無色的區域（紙）
+function paperMap(image) {
+  const w = image.width, h = image.height;
+  const score = paperScore(image, CONFIG.PAPER_CHROMA_PENALTY);
+  const std = localStd(image, 2);
+  const out = new Float32Array(w * h);
+  for (let i = 0; i < out.length; i++) out[i] = std[i] > CONFIG.PAPER_TEXTURE_STD_MAX ? 0 : score[i];
+  return boxBlur(out, w, h, 1);
+}
+
+// 在原圖解析度沿每條邊的法線找明暗交界，擬合直線後求交點。
+// 回傳 { corners, refinedSides, support }：support 是四條邊各自「找到明暗交界的取樣比例」，
+// 四個角真的在紙角上時每條邊都接近 1，圓點亂放時會很低
 export function refineCorners(img, corners) {
   const W = img.width, H = img.height;
-  const wmap = boxBlur(whiteness(img), W, H, 1);
+  const wmap = boxBlur(paperScore(img, CONFIG.PAPER_CHROMA_PENALTY), W, H, 1);
+  const support = [];
   const diag = Math.hypot(W, H);
   const search = Math.max(6, Math.round(CONFIG.EDGE_REFINE_SEARCH_RATIO * diag));
   const pad = 3;
@@ -150,6 +171,7 @@ export function refineCorners(img, corners) {
       const delta = den < 0 ? Math.max(-0.5, Math.min(0.5, (0.5 * (a - c)) / den)) : 0;
       pts.push({ x: bx + ox * (bestJ + delta), y: by + oy * (bestJ + delta) });
     }
+    support.push(pts.length / N);
     const fit = pts.length >= 8 ? robustFitLine(pts, 1.5, 0.35) : null;
     if (fit) {
       lines.push(fit.line);
@@ -164,7 +186,17 @@ export function refineCorners(img, corners) {
     const c = intersectLines(lines[(i + 3) % 4], lines[i]);
     return c && dist(c, orig) <= maxShift ? c : orig;
   });
-  return { corners: out, refinedSides };
+  return { corners: out, refinedSides, support };
+}
+
+// 四個角是否真的圍住一張紙：先吸附到邊緣，再看四條邊有多少比例找得到明暗交界
+export function checkQuad(img, corners) {
+  const refined = refineCorners(img, corners);
+  const sorted = [...refined.support].sort((a, b) => a - b);
+  const meanSupport = refined.support.reduce((s, v) => s + v, 0) / 4;
+  // 腿會蓋掉腳跟那條邊的一部分，所以看平均和「第二差的邊」而不是最差的邊
+  const ok = meanSupport >= CONFIG.QUAD_CHECK_MEAN_SUPPORT && sorted[1] >= CONFIG.QUAD_CHECK_SIDE_SUPPORT;
+  return { ok, corners: refined.corners, refinedSides: refined.refinedSides, support: refined.support, meanSupport };
 }
 
 export function rectify(img, corners, pxPerMm) {

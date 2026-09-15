@@ -7,7 +7,6 @@ export function autoMarkers(seg) {
   const { mask, w, h, ppm } = seg;
   const PW = CONFIG.PAPER_W_MM, PH = CONFIG.PAPER_H_MM;
   const margin = Math.round(CONFIG.SEG_EDGE_MARGIN_MM * ppm);
-  const band = Math.round(CONFIG.SEG_HEEL_BAND_MM * ppm);
   const heelAligned = seg.heelSide === 'bottom';
 
   if (!mask) {
@@ -23,16 +22,20 @@ export function autoMarkers(seg) {
     }
   }
 
-  // 腳跟點：對齊時在紙的下緣，x 取腳跟帶狀區的中心
+  // 腳跟點：對齊時在紙的下緣。x 不取貼邊那幾列（常是小腿的投影，可能偏一邊），
+  // 改取腳跟邊往上 12~30 mm 這段（腳跟本體）每列中心的中位數
   let heel;
   if (heelAligned) {
-    let sum = 0, nRows = 0;
-    for (let y = h - band; y < h - margin; y++) {
+    const centers = [];
+    const y0 = h - Math.round(CONFIG.HEEL_CENTER_ZONE_MM[1] * ppm);
+    const y1 = h - Math.round(CONFIG.HEEL_CENTER_ZONE_MM[0] * ppm);
+    for (let y = Math.max(0, y0); y < y1; y++) {
       let l = -1, r = -1;
       for (let x = 0; x < w; x++) if (mask[y * w + x]) { if (l < 0) l = x; r = x; }
-      if (l >= 0) { sum += (l + r + 1) / 2; nRows++; }
+      if (l >= 0) centers.push((l + r + 1) / 2);
     }
-    heel = { x: nRows ? sum / nRows / ppm : PW / 2, y: PH };
+    centers.sort((a, b) => a - b);
+    heel = { x: centers.length ? centers[centers.length >> 1] / ppm : PW / 2, y: PH };
   } else {
     let maxY = -Infinity;
     for (let k = 0; k < cnt; k++) if (py[k] > maxY) maxY = py[k];

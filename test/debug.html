@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>單張照片逐步除錯</title>
+<style>
+  body { font: 13px/1.5 system-ui, -apple-system, "PingFang TC", "Noto Sans TC", sans-serif; margin: 16px; color: #222; }
+  pre { white-space: pre-wrap; word-break: break-all; background: #f7f7f7; padding: 8px; border-radius: 6px; }
+  .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; }
+  figure { margin: 0; }
+  figcaption { font-size: 12px; color: #555; }
+  canvas { max-width: 300px; border: 1px solid #ddd; display: block; }
+</style>
+</head>
+<body>
+<h1>單張照片逐步除錯</h1>
+<p>用法：<code>debug.html?file=photos/xxx.jpg</code>。結果也放在 <code>window.__dbg</code>。</p>
+<pre id="out">執行中…</pre>
+<div class="row" id="figs"></div>
+<script type="module">
+  import { CONFIG } from '../js/config.js';
+  import { loadImageFile, imageToCanvas, maskToCanvas, grayToCanvas } from '../js/image.js';
+  import { detectPaper, rectify, defaultCorners, checkQuad } from '../js/paper.js';
+  import { assignPaperCorners, dist } from '../js/geometry.js';
+  import { measureFromCorners } from '../js/pipeline.js';
+  import { measurementConfidence } from '../js/measure.js';
+
+  const out = document.getElementById('out');
+  const figs = document.getElementById('figs');
+  const fig = (canvas, caption) => {
+    const f = document.createElement('figure');
+    const c = document.createElement('figcaption');
+    c.textContent = caption;
+    f.append(canvas, c);
+    figs.appendChild(f);
+  };
+  const r1 = (v) => Math.round(v * 10) / 10;
+
+  const file = new URLSearchParams(location.search).get('file');
+  try {
+    const blob = await fetch(file).then((r) => r.blob());
+    const { image, canvas } = await loadImageFile(blob);
+    const det = detectPaper(image, true);
+    if (!det.corners) det.corners = defaultCorners(image.width, image.height);
+    const truthParam = new URLSearchParams(location.search).get('corners'); // 可用 ?corners=x,y,x,y,x,y,x,y 指定真值
+    const truth = truthParam ? truthParam.split(',').map(Number) : null;
+    const quad = truth ? checkQuad(image, [0, 1, 2, 3].map((i) => ({ x: truth[i * 2], y: truth[i * 2 + 1] }))) : null;
+    const dbg = {
+      quadCheck: quad && { ok: quad.ok, support: quad.support.map((v) => Math.round(v * 100) / 100), meanSupport: Math.round(quad.meanSupport * 100) / 100, corners: quad.corners.map((c) => [Math.round(c.x), Math.round(c.y)]) },
+      file, photo: [image.width, image.height],
+      detect: {
+        ok: det.ok, reason: det.reason, score: det.score, aspect: det.aspect, refinedSides: det.refinedSides,
+        otsu: det.debug.otsu, borderBrightRatio: det.debug.borderBrightRatio, support: det.refinedSides !== undefined ? det.support : undefined,
+        corners: det.corners.map((c) => [Math.round(c.x), Math.round(c.y)]),
+        candidates: det.candidates.slice(0, 6).map((c) => ({
+          score: r1(c.score * 1000) / 1000, ratio: r1(c.ratio * 1000) / 1000, quadFit: r1(c.quadFit * 1000) / 1000,
+          fill: r1(c.fill * 1000) / 1000, touches: c.touches, threshold: c.threshold,
+          corners: c.corners.map((p) => [Math.round(p.x), Math.round(p.y)]),
+        })),
+      },
+    };
+    // 在原圖上畫出偵測到的四角
+    const ctx = canvas.getContext('2d');
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = det.ok ? '#00e676' : '#ff1744';
+    ctx.beginPath();
+    det.corners.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+    ctx.closePath();
+    ctx.stroke();
+    fig(canvas, `原圖 + 偵測四角（${det.ok ? '成功' : '失敗 ' + det.reason}）`);
+    if (det.debug.mask) fig(maskToCanvas(det.debug.mask.mask, det.debug.mask.w, det.debug.mask.h, [255, 255, 255, 255]), '白度門檻遮罩');
+
+    const r = measureFromCorners(image, quad ? quad.corners : det.corners, true);
+    const seg = r.seg;
+    dbg.segment = {
+      heelSide: seg.heelSide, flipped: r.flip, contacts: seg.contacts, touchesSides: seg.touchesSides,
+      stat: seg.stat && { area_mm2: Math.round(seg.stat.area / (seg.ppm * seg.ppm)), minX: seg.stat.minX / seg.ppm, maxX: seg.stat.maxX / seg.ppm, minY: seg.stat.minY / seg.ppm, maxY: seg.stat.maxY / seg.ppm },
+      paperRef: seg.debug.paperRef, coef: seg.debug.coef && seg.debug.coef.map((v) => r1(v)),
+    };
+    dbg.markers = Object.fromEntries(Object.entries(r.markers).map(([k, p]) => [k, [r1(p.x), r1(p.y)]]));
+    dbg.flags = r.flags;
+    dbg.measurement = { lengthMm: r1(r.measurement.lengthMm), widthMm: r1(r.measurement.widthMm) };
+    dbg.confidence = measurementConfidence({ autoCorners: det.ok, flags: r.flags, ...r.measurement });
+
+    fig(imageToCanvas(r.segRect), '分割用校正圖（翻轉前）');
+    if (seg.debug.score) fig(grayToCanvas(seg.debug.score, seg.w, seg.h), '腳部分數（127 為門檻）');
+    if (seg.debug.rawMask) fig(maskToCanvas(seg.debug.rawMask, seg.w, seg.h), '門檻後原始遮罩（翻轉前）');
+    // 最終遮罩疊在（已翻轉的）校正圖上，加標記點
+    const rect = imageToCanvas(rectify(image, r.corners, seg.ppm).image);
+    const rctx = rect.getContext('2d');
+    if (seg.mask) rctx.drawImage(maskToCanvas(seg.mask, seg.w, seg.h, [255, 60, 0, 110]), 0, 0);
+    const dot = (p, color) => { rctx.beginPath(); rctx.arc(p.x * seg.ppm, p.y * seg.ppm, 6, 0, Math.PI * 2); rctx.fillStyle = color; rctx.fill(); };
+    dot(r.markers.heel, '#2F80ED'); dot(r.markers.toe, '#ff9800'); dot(r.markers.left, '#27AE60'); dot(r.markers.right, '#27AE60');
+    fig(rect, '最終遮罩 + 自動標記（腳跟在下）');
+
+    window.__dbg = dbg;
+    out.textContent = JSON.stringify(dbg, null, 1);
+  } catch (e) {
+    window.__dbg = { error: String(e.stack || e) };
+    out.textContent = window.__dbg.error;
+  }
+  window.__done = true;
+</script>
+</body>
+</html>

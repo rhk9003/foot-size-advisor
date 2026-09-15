@@ -102,14 +102,17 @@ export async function runAll(report) {
     }
     const tDetect = performance.now();
     if (sc.expectNoPaper) {
-      // 抓不到紙沒關係，但不能「抓錯還說抓到」，後續流程也不能出錯
+      // 抓不到紙沒關係，但不能「抓錯還說抓到」，後續流程也不能出錯。corners 為 null 表示連提示都不給（使用者要自己點角）
       let crashed = false;
-      try { measureFromCorners(scene.image, det.corners); } catch { crashed = true; }
       const px = dist(scene.truthCorners[0], scene.truthCorners[1]) / 210;
-      const err = cornerError(det.corners, scene.truthCorners) / px;
+      let err = NaN;
+      if (det.corners) {
+        try { measureFromCorners(scene.image, det.corners); } catch { crashed = true; }
+        err = cornerError(det.corners, scene.truthCorners) / px;
+      }
       const reasonOk = det.ok || !sc.expectReason || det.reason === sc.expectReason;
       const pass = !crashed && reasonOk && (!det.ok || err <= 1.5);
-      add('流程', sc.name, pass, `ok=${det.ok}，原因=${det.reason}（預期 ${sc.expectReason || '不限'}），紙角誤差 ${round(err)} mm，後續流程${crashed ? '出錯' : '沒有出錯'}`);
+      add('流程', sc.name, pass, `ok=${det.ok}，原因=${det.reason}（預期 ${sc.expectReason || '不限'}），${det.corners ? `提示紙角誤差 ${round(err)} mm` : '沒有提示位置，改由使用者點角'}，後續流程${crashed ? '出錯' : '沒有出錯'}`);
       continue;
     }
     const cErr = det.ok ? cornerError(det.corners, scene.truthCorners) : Infinity;

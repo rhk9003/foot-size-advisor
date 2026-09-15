@@ -1,7 +1,7 @@
 // 流程控制：引導卡片 → 拍照 → （有問題就引導重拍）→ 確認紙角 → 確認腳 → 結果
 import { CONFIG } from './config.js';
 import { loadImageFile, imageToCanvas, maskToCanvas, grayToCanvas } from './image.js';
-import { detectPaper, rectify, aspectCheck, defaultCorners } from './paper.js';
+import { detectPaper, rectify, aspectCheck, defaultCorners, checkQuad } from './paper.js';
 import { assignPaperCorners, dist } from './geometry.js';
 import { measureFromCorners } from './pipeline.js';
 import { computeMeasurements, measurementConfidence, sanityCheck } from './measure.js';
@@ -28,6 +28,8 @@ const state = {
   seg: null,
   flags: null,
   rectCanvas: null,
+  maskCanvas: null,
+  cornerAttempts: 0,
   editor: null,
   feet: [], // 已量過的腳（最多兩隻）
 };
@@ -82,7 +84,7 @@ function showFeedback(issueKey, onContinue) {
   $('feedback-title').textContent = issue.title;
   $('feedback-fix').textContent = issue.fix;
   const btn = $('btn-feedback-continue');
-  btn.textContent = issue.kind === 'paper' ? '不用重拍，我自己標出紙角' : '不用重拍，我自己調整位置';
+  btn.textContent = issue.kind === 'paper' ? '不用重拍，我自己點出紙角' : '不用重拍，我自己調整位置';
   btn.onclick = onContinue;
   showScreen('screen-feedback');
 }
@@ -115,7 +117,7 @@ async function handleFile(file) {
     det = detectPaper(state.photo, DEBUG);
   } catch (e) {
     console.error(e);
-    det = { ok: false, reason: 'not_found', corners: defaultCorners(state.photo.width, state.photo.height) };
+    det = { ok: false, reason: 'not_found', corners: null };
   }
   state.detection = det;
   if (det.ok) showCorners(det.corners);
@@ -124,25 +126,49 @@ async function handleFile(file) {
 
 // ---------- 確認紙角 ----------
 
+// corners 為 null 時進入放置模式：使用者依序點四個角，沒點完不能下一步
 function showCorners(corners) {
   showScreen('screen-corners');
-  const det = state.detection;
-  const hint = $('corners-hint');
-  hint.classList.toggle('strong', !det.ok);
-  hint.textContent = det.ok
-    ? '沒對準的話，用手指把圓點拖到紙角。'
-    : '請把四個圓點拖到紙的四個角，也可以直接點紙角。';
+  const placing = !corners;
+  const start = corners || defaultCorners(state.photo.width, state.photo.height);
+  state.cornerAttempts = 0;
   $('corners-warn').hidden = true;
   destroyEditor();
   state.editor = new PointEditor($('corners-stage'), {
     source: state.photoCanvas,
-    points: corners.map((c, i) => ({ id: `c${i}`, x: c.x, y: c.y, color: COLORS.paper })),
+    points: start.map((c, i) => ({ id: `c${i}`, x: c.x, y: c.y, color: COLORS.paper })),
     units: 1,
     tapToMove: true,
+    placeMode: placing,
     drawOverlay: drawCornerOverlay,
-    onChange: () => { $('corners-warn').hidden = true; },
+    onChange: () => { $('corners-warn').hidden = true; updateCornerHint(placing); },
   });
+  updateCornerHint(placing);
   if (DEBUG) renderCornerDebug();
+}
+
+function updateCornerHint(placing) {
+  const det = state.detection;
+  const hint = $('corners-hint');
+  const next = $('btn-corners-next');
+  if (!state.editor.allPlaced()) {
+    const left = 4 - state.editor.placedCount();
+    hint.classList.add('strong');
+    hint.textContent = `請點一下紙的四個角，順序不限。還要點 ${left} 個。`;
+    next.disabled = true;
+    return;
+  }
+  next.disabled = false;
+  if (placing) {
+    hint.classList.add('strong');
+    hint.textContent = '四個角都點好了。放大看一下，沒對準就用手指拖過去。';
+  } else if (det.ok) {
+    hint.classList.remove('strong');
+    hint.textContent = '沒對準的話，用手指把圓點拖到紙角。';
+  } else {
+    hint.classList.add('strong');
+    hint.textContent = '程式不太確定紙在哪。請確認四個圓點都在紙角上，沒對準就拖過去。';
+  }
 }
 
 function drawCornerOverlay(ctx, toScreen, pts) {
@@ -158,16 +184,30 @@ function drawCornerOverlay(ctx, toScreen, pts) {
 }
 
 async function confirmCorners() {
-  const corners = assignPaperCorners(state.editor.getPoints().map((p) => ({ x: p.x, y: p.y })));
+  if (!state.editor.allPlaced()) return;
+  const raw = assignPaperCorners(state.editor.getPoints().map((p) => ({ x: p.x, y: p.y })));
   const warn = $('corners-warn');
-  const asp = aspectCheck(corners, state.photo.width, state.photo.height, CONFIG.PAPER_ASPECT_TOL_MANUAL);
-  if (!asp.ok && warn.hidden) {
-    warn.textContent = `四個圓點圍出來的形狀不像 A4 紙（長寬比 ${asp.ratio.toFixed(2)}，A4 是 1.41）。確認圓點都在紙角上，沒問題再按一次。`;
-    warn.hidden = false;
-    return;
+  // 兩道檢查：形狀像不像 A4、四條邊是不是真的落在紙的邊緣上（會先把圓點吸附到邊緣）
+  const asp = aspectCheck(raw, state.photo.width, state.photo.height, CONFIG.PAPER_ASPECT_TOL_MANUAL);
+  const quad = checkQuad(state.photo, raw);
+  const problems = [];
+  if (!quad.ok) problems.push('圓點好像沒有對準紙的邊緣');
+  if (!asp.ok) problems.push(`四個圓點圍出來的形狀不像 A4 紙（長寬比 ${asp.ratio.toFixed(2)}，A4 是 1.41）`);
+  if (problems.length) {
+    // 完全不像紙要警告兩次才放行（白色地板上找不到紙邊時仍有路可走），普通不符警告一次
+    const hardFail = quad.meanSupport < CONFIG.QUAD_CHECK_HARD_FAIL;
+    if (state.cornerAttempts < (hardFail ? 2 : 1)) {
+      warn.textContent = hardFail
+        ? `${problems.join('；')}。請放大看，把四個圓點都拖到紙角上，或重拍一張。`
+        : `${problems.join('；')}。請確認圓點都在紙角上；確定沒問題就再按一次下一步。`;
+      warn.hidden = false;
+      state.cornerAttempts++;
+      return;
+    }
   }
+  const corners = quad.ok ? quad.corners : raw;
   const det = state.detection;
-  const moved = !det.ok || corners.some((c) => Math.min(...det.corners.map((d) => dist(c, d))) > 3);
+  const moved = !det.ok || !det.corners || corners.some((c) => Math.min(...det.corners.map((d) => dist(c, d))) > 3);
   state.autoCorners = det.ok && !moved;
 
   destroyEditor();
@@ -180,6 +220,7 @@ async function confirmCorners() {
     state.seg = r.seg;
     state.flags = r.flags;
     state.rectCanvas = imageToCanvas(rectify(state.photo, r.corners, CONFIG.RECT_PX_PER_MM).image);
+    state.maskCanvas = r.seg.mask ? maskToCanvas(r.seg.mask, r.seg.w, r.seg.h, [255, 83, 83, 80]) : null;
   } catch (e) {
     console.error(e);
     showError('量測失敗', '處理照片時發生錯誤。請重拍一張，或改用直接輸入腳長腳寬。');
@@ -224,12 +265,14 @@ function showFoot(markers) {
   const m = updateFootLive(state.editor.getPoints());
   const conf = measurementConfidence({ autoCorners: state.autoCorners, flags: state.flags, ...m });
   const low = conf < CONFIG.CONFIDENCE_CONFIRM || !state.flags.heelAligned;
+  const uneven = !!(state.seg && state.seg.unevenLight);
   const hint = $('foot-hint');
-  hint.classList.toggle('strong', low);
+  hint.classList.toggle('strong', low || uneven);
   if (state.flags.noFoot) hint.textContent = '沒找到腳的位置，請把圓點拖到腳跟、腳尖和腳掌最寬處。';
   else if (!state.flags.heelAligned) hint.textContent = '腳跟沒有貼齊紙邊，請確認藍色圓點在腳跟最後面。';
+  else if (uneven) hint.textContent = '紙上有明顯的影子，影子不算腳。請確認紅色範圍和綠色圓點只在腳上，超出去就拖回來。';
   else if (low) hint.textContent = '這張不太確定，請仔細看圓點有沒有對準，沒對準就拖過去。';
-  else hint.textContent = '沒對準的話，用手指拖過去。';
+  else hint.textContent = '紅色是程式判斷的腳。沒對準的話，用手指拖過去。';
 }
 
 function updateFootLive(pts) {
@@ -239,6 +282,11 @@ function updateFootLive(pts) {
 }
 
 function drawFootOverlay(ctx, toScreen, pts) {
+  if (state.maskCanvas) {
+    const br = toScreen({ x: CONFIG.PAPER_W_MM, y: CONFIG.PAPER_H_MM });
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(state.maskCanvas, 0, 0, br.x, br.y);
+  }
   const mk = markersFromPoints(pts);
   const { heel, toe, left, right } = mk;
   const { ux, uy, nx, ny } = computeMeasurements(mk).axis;

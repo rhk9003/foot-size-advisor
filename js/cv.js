@@ -45,6 +45,37 @@ export function whiteness(img) {
   return out;
 }
 
+// 紙張分數：亮而且沒有顏色才會高。min(RGB) 扣掉 penalty × (max − min)，
+// 米色地毯、木地板、皮膚都會因為帶色而被壓低，白紙在影子裡仍然沒有顏色所以分數維持
+export function paperScore(img, penalty = 2) {
+  const { data } = img;
+  const out = new Uint8Array(img.width * img.height);
+  for (let i = 0, j = 0; j < out.length; i += 4, j++) {
+    const r = data[i], g = data[i + 1], b = data[i + 2];
+    const mn = r < g ? (r < b ? r : b) : (g < b ? g : b);
+    const mx = r > g ? (r > b ? r : b) : (g > b ? g : b);
+    const v = mn - penalty * (mx - mn);
+    out[j] = v < 0 ? 0 : v;
+  }
+  return out;
+}
+
+// 亮度局部標準差（(2r+1)² 視窗），紙很平滑、地毯木紋很高
+export function localStd(img, r) {
+  const { width: w, height: h, data } = img;
+  const y = new Float32Array(w * h);
+  for (let i = 0, j = 0; j < y.length; i += 4, j++) y[j] = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+  const y2 = new Float32Array(w * h);
+  for (let j = 0; j < y.length; j++) y2[j] = y[j] * y[j];
+  const m = boxBlur(y, w, h, r), m2 = boxBlur(y2, w, h, r);
+  const out = new Float32Array(w * h);
+  for (let j = 0; j < out.length; j++) {
+    const v = m2[j] - m[j] * m[j];
+    out[j] = v > 0 ? Math.sqrt(v) : 0;
+  }
+  return out;
+}
+
 // 可分離方框模糊（邊緣延伸），回傳 Float32Array
 export function boxBlur(src, w, h, r) {
   const out = new Float32Array(w * h);
