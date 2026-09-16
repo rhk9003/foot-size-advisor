@@ -59,8 +59,8 @@ def build():
     d.line(S(193, 306, 205, 292), fill=WHITE, width=4 * scale)
 
     # 文字與按鈕
-    d.text(S(350, 70), "不確定穿幾號？", font=font(54 * scale, 700), fill=INK)
-    d.text(S(352, 158), "腳踩 A4 紙拍一張照，馬上幫你選尺碼", font=font(30 * scale, 400), fill=SUB)
+    d.text(S(350, 70), "先量再買，更貼合！", font=font(54 * scale, 700), fill=INK)
+    d.text(S(352, 158), "腳踩 A4 紙拍一張照，馬上幫你選對尺碼", font=font(30 * scale, 400), fill=SUB)
     d.rounded_rectangle(S(350, 240, 910, 336), radius=48 * scale, fill=BRAND)
     text_center(d, S(350, 240, 910, 336), "點我拍照選尺碼　›", font(40 * scale, 700), WHITE)
 
