@@ -1,7 +1,7 @@
 """產生商品頁用的「拍照選尺碼」按鈕圖，上架時把整張圖設成超連結到工具。
 
 用法：python tools/make_cta_banner.py
-輸出：size-chart/拍照選尺碼按鈕.png（寬 1000px）
+輸出：size-chart/拍照選尺碼按鈕.png 與 .jpg（寬 1000px）
 字型：Noto Sans TC（SIL Open Font License，商用可用）
 """
 from pathlib import Path
@@ -67,10 +67,14 @@ def build():
     img = img.resize((W, H), Image.LANCZOS)
     out_dir = ROOT / "size-chart"
     out_dir.mkdir(exist_ok=True)
-    out = out_dir / "拍照選尺碼按鈕.png"
-    img.save(out, optimize=True)
-    return out
+    png = out_dir / "拍照選尺碼按鈕.png"
+    jpg = out_dir / "拍照選尺碼按鈕.jpg"
+    img.save(png, optimize=True)
+    # 商品頁用 JPG：不做色度抽樣，紅底白字才不會糊
+    img.save(jpg, quality=94, subsampling=0, optimize=True)
+    return png, jpg
 
 
 if __name__ == "__main__":
-    print(build())
+    for f in build():
+        print(f)
